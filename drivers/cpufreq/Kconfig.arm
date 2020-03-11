@@ -121,6 +121,14 @@ config ARM_QCOM_CPUFREQ_KRYO
 
 	  If in doubt, say N.
 
+config ARM_RASPBERRYPI_CPUFREQ
+	tristate "Raspberry Pi cpufreq support"
+	depends on CLK_RASPBERRYPI || COMPILE_TEST
+	help
+	  This adds the CPUFreq driver for Raspberry Pi
+
+	  If in doubt, say N.
+
 config ARM_S3C_CPUFREQ
 	bool
 	help
@@ -259,6 +267,15 @@ config ARM_TANGO_CPUFREQ
 	bool
 	depends on CPUFREQ_DT && ARCH_TANGO
 	default y
+
+config ARM_BCM2835_CPUFREQ
+	depends on RASPBERRYPI_FIRMWARE
+	bool "BCM2835 Driver"
+	default y
+	help
+	  This adds the CPUFreq driver for BCM2835
+
+	  If in doubt, say N.
 
 config ARM_TEGRA20_CPUFREQ
 	tristate "Tegra20 CPUFreq support"

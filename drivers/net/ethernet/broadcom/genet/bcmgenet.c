@@ -74,6 +74,9 @@
 
 /* Forward declarations */
 static void bcmgenet_set_rx_mode(struct net_device *dev);
+static bool skip_umac_reset = true;
+module_param(skip_umac_reset, bool, 0444);
+MODULE_PARM_DESC(skip_umac_reset, "Skip UMAC reset step");
 
 static inline void bcmgenet_writel(u32 value, void __iomem *offset)
 {
@@ -1997,6 +2000,11 @@ static void reset_umac(struct bcmgenet_priv *priv)
 	bcmgenet_rbuf_ctrl_set(priv, 0);
 	udelay(10);
 
+	if (skip_umac_reset) {
+		pr_warn("Skipping UMAC reset\n");
+		return;
+	}
+
 	/* disable MAC while updating its registers */
 	bcmgenet_umac_writel(priv, 0, UMAC_CMD);
 
@@ -2151,7 +2159,7 @@ static void bcmgenet_init_tx_ring(struct bcmgenet_priv *priv,
 
 	bcmgenet_tdma_ring_writel(priv, index, 0, TDMA_PROD_INDEX);
 	bcmgenet_tdma_ring_writel(priv, index, 0, TDMA_CONS_INDEX);
-	bcmgenet_tdma_ring_writel(priv, index, 1, DMA_MBUF_DONE_THRESH);
+	bcmgenet_tdma_ring_writel(priv, index, 10, DMA_MBUF_DONE_THRESH);
 	/* Disable rate control for now */
 	bcmgenet_tdma_ring_writel(priv, index, flow_period_val,
 				  TDMA_FLOW_PERIOD);
@@ -3582,9 +3590,12 @@ static int bcmgenet_probe(struct platform_device *pdev)
 	netif_set_real_num_rx_queues(priv->dev, priv->hw_params->rx_queues + 1);
 
 	/* Set default coalescing parameters */
-	for (i = 0; i < priv->hw_params->rx_queues; i++)
+	for (i = 0; i < priv->hw_params->rx_queues; i++) {
 		priv->rx_rings[i].rx_max_coalesced_frames = 1;
+		priv->rx_rings[i].rx_coalesce_usecs = 50;
+	}
 	priv->rx_rings[DESC_INDEX].rx_max_coalesced_frames = 1;
+	priv->rx_rings[DESC_INDEX].rx_coalesce_usecs = 50;
 
 	/* libphy will determine the link state */
 	netif_carrier_off(dev);
