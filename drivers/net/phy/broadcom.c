@@ -52,6 +52,21 @@ static int bcm54210e_config_init(struct phy_device *phydev)
 	return 0;
 }
 
+static void bcm54213pe_config_init(struct phy_device *phydev)
+{
+	u16 val;
+
+	/* Enable ACT+LINK indication on ACTIVITY trigger */
+	val = bcm_phy_read_shadow(phydev, BCM54XX_SHD_LEDCTL);
+	val |= BCM54XX_SHD_LEDCTL_ACTLINK_EN;
+	bcm_phy_write_shadow(phydev, BCM54XX_SHD_LEDCTL, val);
+
+	/* Set ACTIVITY on LED "1" output, LINKSPD[1] on LED "3" output */
+	val = BCM5482_SHD_LEDS1_LED1(BCM_LED_SRC_ACTIVITYLED) |
+		BCM5482_SHD_LEDS1_LED3(BCM_LED_SRC_LINKSPD1);
+	bcm_phy_write_shadow(phydev, BCM5482_SHD_LEDS1, val);
+}
+
 static int bcm54612e_config_init(struct phy_device *phydev)
 {
 	int reg;
@@ -222,7 +237,8 @@ static void bcm54xx_adjust_rxrefclk(struct phy_device *phydev)
 	/* Abort if we are using an untested phy. */
 	if (BRCM_PHY_MODEL(phydev) != PHY_ID_BCM57780 &&
 	    BRCM_PHY_MODEL(phydev) != PHY_ID_BCM50610 &&
-	    BRCM_PHY_MODEL(phydev) != PHY_ID_BCM50610M)
+	    BRCM_PHY_MODEL(phydev) != PHY_ID_BCM50610M &&
+	    BRCM_PHY_MODEL(phydev) != PHY_ID_BCM54213PE)
 		return;
 
 	val = bcm_phy_read_shadow(phydev, BCM54XX_SHD_SCR3);
@@ -276,6 +292,9 @@ static void bcm54xx_adjust_rxrefclk(struct phy_device *phydev)
 static int bcm54xx_config_init(struct phy_device *phydev)
 {
 	int reg, err, val;
+	u32 led_modes[] = {BCM_LED_MULTICOLOR_LINK_ACT,
+			   BCM_LED_MULTICOLOR_LINK};
+	struct device_node *np = phydev->mdio.dev.of_node;
 
 	reg = phy_read(phydev, MII_BCM54XX_ECR);
 	if (reg < 0)
@@ -309,6 +328,8 @@ static int bcm54xx_config_init(struct phy_device *phydev)
 		err = bcm54210e_config_init(phydev);
 		if (err)
 			return err;
+	} else if (BRCM_PHY_MODEL(phydev) == PHY_ID_BCM54213PE) {
+		bcm54213pe_config_init(phydev);
 	} else if (BRCM_PHY_MODEL(phydev) == PHY_ID_BCM54612E) {
 		err = bcm54612e_config_init(phydev);
 		if (err)
@@ -326,6 +347,17 @@ static int bcm54xx_config_init(struct phy_device *phydev)
 	}
 
 	bcm54xx_phydsp_config(phydev);
+
+	of_property_read_u32_array(np, "led-modes", led_modes, 2);
+
+	val = BCM5482_SHD_LEDS1_LED1(BCM_LED_SRC_MULTICOLOR1) |
+		BCM5482_SHD_LEDS1_LED3(BCM_LED_SRC_MULTICOLOR1);
+	bcm_phy_write_shadow(phydev, BCM5482_SHD_LEDS1, val);
+
+	val = BCM_LED_MULTICOLOR_IN_PHASE |
+		BCM5482_SHD_LEDS1_LED1(led_modes[0]) |
+		BCM5482_SHD_LEDS1_LED3(led_modes[1]);
+	bcm_phy_write_exp(phydev, BCM_EXP_MULTICOLOR, val);
 
 	return 0;
 }
@@ -604,8 +636,17 @@ static struct phy_driver broadcom_drivers[] = {
 	.config_intr	= bcm_phy_config_intr,
 }, {
 	.phy_id		= PHY_ID_BCM54210E,
-	.phy_id_mask	= 0xfffffff0,
+	.phy_id_mask	= 0xffffffff,
 	.name		= "Broadcom BCM54210E",
+	.features	= PHY_GBIT_FEATURES,
+	.flags		= PHY_HAS_INTERRUPT,
+	.config_init	= bcm54xx_config_init,
+	.ack_interrupt	= bcm_phy_ack_intr,
+	.config_intr	= bcm_phy_config_intr,
+}, {
+	.phy_id		= PHY_ID_BCM54213PE,
+	.phy_id_mask	= 0xffffffff,
+	.name		= "Broadcom BCM54213PE",
 	.features	= PHY_GBIT_FEATURES,
 	.flags		= PHY_HAS_INTERRUPT,
 	.config_init	= bcm54xx_config_init,
@@ -748,7 +789,8 @@ module_phy_driver(broadcom_drivers);
 static struct mdio_device_id __maybe_unused broadcom_tbl[] = {
 	{ PHY_ID_BCM5411, 0xfffffff0 },
 	{ PHY_ID_BCM5421, 0xfffffff0 },
-	{ PHY_ID_BCM54210E, 0xfffffff0 },
+	{ PHY_ID_BCM54210E, 0xffffffff },
+	{ PHY_ID_BCM54213PE, 0xffffffff },
 	{ PHY_ID_BCM5461, 0xfffffff0 },
 	{ PHY_ID_BCM54612E, 0xfffffff0 },
 	{ PHY_ID_BCM54616S, 0xfffffff0 },
