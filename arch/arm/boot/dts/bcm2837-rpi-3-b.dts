@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /dts-v1/;
 #include "bcm2837.dtsi"
-#include "bcm2835-rpi.dtsi"
+#include "bcm2836-rpi.dtsi"
 #include "bcm283x-rpi-smsc9514.dtsi"
 #include "bcm283x-rpi-usb-host.dtsi"
+#include "bcm283x-rpi-csi1-2lane.dtsi"
 
 / {
 	compatible = "raspberrypi,3-model-b", "brcm,bcm2837";
@@ -14,7 +15,7 @@
 		stdout-path = "serial1:115200n8";
 	};
 
-	memory {
+	memory@0 {
 		reg = <0 0x40000000>;
 	};
 
@@ -55,6 +56,8 @@
 
 &hdmi {
 	hpd-gpios = <&expgpio 4 GPIO_ACTIVE_LOW>;
+	power-domains = <&power RPI_POWER_DOMAIN_HDMI>;
+	status = "okay";
 };
 
 /* uart0 communicates with the BT module */
