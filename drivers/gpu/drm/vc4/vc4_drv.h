@@ -67,6 +67,9 @@ struct vc4_perfmon {
 struct vc4_dev {
 	struct drm_device *dev;
 
+	bool firmware_kms;
+	struct rpi_firmware *firmware;
+
 	struct vc4_hdmi *hdmi;
 	struct vc4_hvs *hvs;
 	struct vc4_v3d *v3d;
@@ -74,6 +77,7 @@ struct vc4_dev {
 	struct vc4_dsi *dsi1;
 	struct vc4_vec *vec;
 	struct vc4_txp *txp;
+	struct vc4_fkms *fkms;
 
 	struct vc4_hang_state *hang_state;
 
@@ -701,6 +705,9 @@ bool vc4_crtc_get_scanoutpos(struct drm_device *dev, unsigned int crtc_id,
 			     const struct drm_display_mode *mode);
 void vc4_crtc_handle_vblank(struct vc4_crtc *crtc);
 void vc4_crtc_txp_armed(struct drm_crtc_state *state);
+void vc4_crtc_get_margins(struct drm_crtc_state *state,
+			  unsigned int *right, unsigned int *left,
+			  unsigned int *top, unsigned int *bottom);
 
 /* vc4_debugfs.c */
 int vc4_debugfs_init(struct drm_minor *minor);
@@ -718,6 +725,9 @@ int vc4_dsi_debugfs_regs(struct seq_file *m, void *unused);
 
 /* vc4_fence.c */
 extern const struct dma_fence_ops vc4_fence_ops;
+
+/* vc4_firmware_kms.c */
+extern struct platform_driver vc4_firmware_kms_driver;
 
 /* vc4_gem.c */
 void vc4_gem_init(struct drm_device *dev);
@@ -777,6 +787,7 @@ void vc4_plane_async_set_fb(struct drm_plane *plane,
 
 /* vc4_v3d.c */
 extern struct platform_driver vc4_v3d_driver;
+extern const struct of_device_id vc4_v3d_dt_match[];
 int vc4_v3d_debugfs_ident(struct seq_file *m, void *unused);
 int vc4_v3d_debugfs_regs(struct seq_file *m, void *unused);
 int vc4_v3d_get_bin_slot(struct vc4_dev *vc4);
