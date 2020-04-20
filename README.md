@@ -2,16 +2,15 @@
 
 #### 介绍
 
-适用于树莓派的 openEuler-1.0-LTS 内核源码，位于本仓库分支：[openEuler-1.0-LTS-raspi](https://gitee.com/openeuler/raspberrypi-kernel/tree/openEuler-1.0-LTS-raspi/)。
+适用于树莓派 的 4.19.90 版本的内核源码，主开发分支为 master 分支。
 
-本仓库基于 [openEuler-1.0-LTS 内核](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) 和 [树莓派内核](https://github.com/raspberrypi/linux/tree/rpi-4.19.y)。
+本仓库基于 openEuler 20.3 LTS 的 [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/4.19.90-2003.4.0/) 版本的内核，合并了上游 [树莓派内核 4.19.y](https://github.com/raspberrypi/linux/tree/rpi-4.19.y) 的分支代码。
 
+#### 支持硬件
 
-#### 硬件要求
+树莓派 3B/3B+/4B
 
-硬件：树莓派 3B/3B+4B。
-
-架构：AArch64。
+架构：AArch64
 
 #### 编译
 
@@ -19,35 +18,29 @@
 
 1.  准备编译环境
 
-操作系统：openEuler 或 Centos 7/8；
+操作系统：openEuler 或 CentOS 7/8
 
-架构：ARM。
+架构：AArch64
 
-可以使用 [QEMU](https://www.qemu.org) 模拟器搭建 ARM 运行环境。
+交叉编译请参照：[交叉编译内核](https://gitee.com/openeuler/raspberrypi/blob/master/documents/交叉编译内核.md)
 
 2.  下载源码
 
 `git clone https://gitee.com/openeuler/raspberrypi-kernel.git`
 
-3.  进入源码目录并切换到openEuler-1.0-LTS-raspi分支
-
-`cd raspberrypi-kernel`
-
-`git checkout -b openEuler-1.0-LTS-raspi origin/openEuler-1.0-LTS-raspi`
-
-4.  载入默认设置
+3.  载入默认设置
 
 `make openeuler-raspi_defconfig`
 
-5.  编译内核
+4.  编译内核
 
 `make ARCH=arm64 -j4`
 
-6.  创建编译内核模块目录
+5.  创建编译内核模块目录
 
 `mkdir ../output`
 
-7.  编译内核模块
+6.  编译内核模块
 
 `make INSTALL_MOD_PATH=../output/ modules_install`
 
