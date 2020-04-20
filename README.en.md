@@ -2,9 +2,9 @@
 
 #### Description
 
-The openEuler-1.0-LTS kernel for running on Raspberry Pi, located at branch [openEuler-1.0-LTS-raspi](https://gitee.com/openeuler/raspberrypi-kernel/tree/openEuler-1.0-LTS-raspi/).
+The 4.19.90 kernel for running on Raspberry Pi, branch master is the branch on development.
 
-This repository is built based on [openEuler-1.0-LTS kernel](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) and [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
+This repository is based on [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) version kernel which is built into openEuler 20.03 LTS, and is merge with the 4.19.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
 
 #### Architecture Requirements
 
@@ -18,35 +18,29 @@ Compile kernel and kernel modules.
 
 1.  Prepare compile environment
 
-OS: openEuler or Centos 7/8;
+OS: openEuler or CentOS 7/8;
 
 Architecture: ARM.
 
-For example, you can use [QEMU](https://www.qemu.org/) to build ARM system emulation.
+You follow the documents of [raspberrypi](https://gitee.com/openeuler/raspberrypi/blob/master/README.en.md) to cross-compile this kernel. 
 
 2.  Download source
 
 `git clone https://gitee.com/openeuler/raspberrypi-kernel.git`
 
-3.  Go to the source directory and checkout the openEuler-1.0-LTS-raspi branch
-
-`cd raspberrypi-kernel`
-
-`git checkout -b openEuler-1.0-LTS-raspi origin/openEuler-1.0-LTS-raspi`
-
-4.  Load default settings
+3.  Load default settings
 
 `make openeuler-raspi_defconfig`
 
-5.  Compile kernel
+4.  Compile kernel
 
 `make ARCH=arm64 -j4`
 
-6.  Create directory for compiling kernel modules
+5.  Create directory for compiling kernel modules
 
 `mkdir ../output`
 
-7.  Compile kernel modules
+6.  Compile kernel modules
 
 `make INSTALL_MOD_PATH=../output/ modules_install`
 
