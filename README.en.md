@@ -4,7 +4,7 @@
 
 The 4.19.90 kernel for running on Raspberry Pi, branch master is the branch on development.
 
-This repository is based on [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) version kernel which is built into openEuler 20.03 LTS, and is merge with the 4.19.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
+This repository is based on [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) version kernel which is built into openEuler 20.03 LTS, and is merged with the 4.19.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
 
 #### Architecture Requirements
 
@@ -20,7 +20,7 @@ Compile kernel and kernel modules.
 
 OS: openEuler or CentOS 7/8;
 
-Architecture: ARM.
+Architecture: AArch64.
 
 You follow the documents of [raspberrypi](https://gitee.com/openeuler/raspberrypi/blob/master/README.en.md) to cross-compile this kernel. 
 
