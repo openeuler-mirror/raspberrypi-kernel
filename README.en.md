@@ -26,7 +26,7 @@ You follow the documents of [raspberrypi](https://gitee.com/openeuler/raspberryp
 
 2.  Download source
 
-`git clone https://gitee.com/openeuler/raspberrypi-kernel.git`
+`git clone git@gitee.com:openeuler/raspberrypi-kernel.git`
 
 3.  Load default settings
 
@@ -48,7 +48,7 @@ Now, the kernel compilation is complete.
 
 #### Installation
 
-Refer to `https://gitee.com/openeuler/raspberrypi` for details about how to use this compiled kernel to build openEuler image for Rasberry Pi.
+Refer to [raspberrypi Repository](https://gitee.com/openeuler/raspberrypi) for details about how to use this compiled kernel to build openEuler image for Rasberry Pi.
 
 #### Contributions
 
