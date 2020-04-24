@@ -26,7 +26,7 @@
 
 2.  下载源码
 
-`git clone https://gitee.com/openeuler/raspberrypi-kernel.git`
+`git clone git@gitee.com:openeuler/raspberrypi-kernel.git`
 
 3.  载入默认设置
 
@@ -48,7 +48,7 @@
 
 #### 使用说明
 
-利用上面编译好的内核来构建镜像，具体文档参见`https://gitee.com/openeuler/raspberrypi`。
+利用上面编译好的内核来构建镜像，具体文档参见 [raspberrypi 仓库](https://gitee.com/openeuler/raspberrypi)。
 
 #### 参与贡献
 
