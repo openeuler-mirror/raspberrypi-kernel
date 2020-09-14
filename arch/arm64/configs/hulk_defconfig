@@ -499,6 +499,7 @@ CONFIG_ARM64_TLB_RANGE=y
 # ARMv8.5 architectural features
 #
 CONFIG_ARCH_RANDOM=y
+CONFIG_ARM64_E0PD=y
 
 #
 # Boot options

@@ -484,6 +484,7 @@ CONFIG_ARM64_CNP=n
 # ARMv8.5 architectural features
 #
 # CONFIG_ARCH_RANDOM is not set
+# CONFIG_ARM64_E0PD is not set
 
 #
 # Boot options
