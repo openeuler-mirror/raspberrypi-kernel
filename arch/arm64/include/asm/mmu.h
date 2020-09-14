@@ -50,71 +50,11 @@ extern int res_mem_count;
  */
 #define ASID(mm)	((mm)->context.id.counter & 0xffff)
 
+extern bool arm64_use_ng_mappings;
+
 static inline bool arm64_kernel_unmapped_at_el0(void)
 {
-	return IS_ENABLED(CONFIG_UNMAP_KERNEL_AT_EL0) &&
-	       cpus_have_const_cap(ARM64_UNMAP_KERNEL_AT_EL0);
-}
-
-/*
- * This check is triggered during the early boot before the cpufeature
- * is initialised. Checking the status on the local CPU allows the boot
- * CPU to detect the need for non-global mappings and thus avoiding a
- * pagetable re-write after all the CPUs are booted. This check will be
- * anyway run on individual CPUs, allowing us to get the consistent
- * state once the SMP CPUs are up and thus make the switch to non-global
- * mappings if required.
- */
-static inline bool kaslr_requires_kpti(void)
-{
-	u64 ftr;
-
-	if (!IS_ENABLED(CONFIG_RANDOMIZE_BASE))
-		return false;
-
-	/*
-	 * E0PD does a similar job to KPTI so can be used instead
-	 * where available.
-	 */
-	if (IS_ENABLED(CONFIG_ARM64_E0PD)) {
-		ftr = read_sysreg_s(SYS_ID_AA64MMFR2_EL1);
-		if ((ftr >> ID_AA64MMFR2_E0PD_SHIFT) & 0xf)
-			return false;
-	}
-
-	return kaslr_offset() > 0;
-}
-
-static inline bool arm64_kernel_use_ng_mappings(void)
-{
-	/* What's a kpti? Use global mappings if we don't know. */
-	if (!IS_ENABLED(CONFIG_UNMAP_KERNEL_AT_EL0))
-		return false;
-
-	/*
-	 * Note: this function is called before the CPU capabilities have
-	 * been configured, so our early mappings will be global. If we
-	 * later determine that kpti is required, then
-	 * kpti_install_ng_mappings() will make them non-global.
-	 */
-	if (arm64_kernel_unmapped_at_el0())
-		return true;
-
-	/*
-	 * Once we are far enough into boot for capabilities to be
-	 * ready we will have confirmed if we are using non-global
-	 * mappings so don't need to consider anything else here.
-	 */
-	if (static_branch_likely(&arm64_const_caps_ready))
-		return false;
-
-	/*
-	 * KASLR is enabled so we're going to be enabling kpti on non-broken
-	 * CPUs regardless of their susceptibility to Meltdown. Rather
-	 * than force everybody to go through the G -> nG dance later on,
-	 * just put down non-global mappings from the beginning
-	 */
-	return kaslr_requires_kpti();
+	return arm64_use_ng_mappings;
 }
 
 typedef void (*bp_hardening_cb_t)(void);
@@ -167,6 +107,7 @@ extern void create_pgd_mapping(struct mm_struct *mm, phys_addr_t phys,
 			       pgprot_t prot, bool page_mappings_only);
 extern void *fixmap_remap_fdt(phys_addr_t dt_phys);
 extern void mark_linear_text_alias_ro(void);
+extern bool kaslr_requires_kpti(void);
 
 #endif	/* !__ASSEMBLY__ */
 #endif
