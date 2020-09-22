@@ -783,7 +783,7 @@ static inline bool iort_iommu_driver_enabled(u8 type)
 static struct acpi_iort_node *iort_get_msi_resv_iommu(struct device *dev)
 {
 	struct acpi_iort_node *iommu;
-	struct iommu_fwspec *fwspec = dev->iommu_fwspec;
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 
 	iommu = iort_get_iort_node(fwspec->iommu_fwnode);
 
@@ -798,9 +798,10 @@ static struct acpi_iort_node *iort_get_msi_resv_iommu(struct device *dev)
 	return NULL;
 }
 
-static inline const struct iommu_ops *iort_fwspec_iommu_ops(
-				struct iommu_fwspec *fwspec)
+static inline const struct iommu_ops *iort_fwspec_iommu_ops(struct device *dev)
 {
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
+
 	return (fwspec && fwspec->ops) ? fwspec->ops : NULL;
 }
 
@@ -828,6 +829,7 @@ static inline int iort_add_device_replay(const struct iommu_ops *ops,
  */
 int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head)
 {
+	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
 	struct acpi_iort_its_group *its;
 	struct acpi_iort_node *iommu_node, *its_node = NULL;
 	int i, resv = 0;
@@ -845,9 +847,9 @@ int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head)
 	 * a given PCI or named component may map IDs to.
 	 */
 
-	for (i = 0; i < dev->iommu_fwspec->num_ids; i++) {
+	for (i = 0; i < fwspec->num_ids; i++) {
 		its_node = iort_node_map_id(iommu_node,
-					dev->iommu_fwspec->ids[i],
+					fwspec->ids[i],
 					NULL, IORT_MSI_TYPE);
 		if (its_node)
 			break;
@@ -878,8 +880,7 @@ int iort_iommu_msi_get_resv_regions(struct device *dev, struct list_head *head)
 	return (resv == its->its_count) ? resv : -ENODEV;
 }
 #else
-static inline const struct iommu_ops *iort_fwspec_iommu_ops(
-				struct iommu_fwspec *fwspec)
+static inline const struct iommu_ops *iort_fwspec_iommu_ops(struct device *dev);
 { return NULL; }
 static inline int iort_add_device_replay(const struct iommu_ops *ops,
 					 struct device *dev)
@@ -1060,7 +1061,7 @@ const struct iommu_ops *iort_iommu_configure(struct device *dev)
 	 * If we already translated the fwspec there
 	 * is nothing left to do, return the iommu_ops.
 	 */
-	ops = iort_fwspec_iommu_ops(dev->iommu_fwspec);
+	ops = iort_fwspec_iommu_ops(dev);
 	if (ops)
 		return ops;
 
@@ -1118,7 +1119,7 @@ const struct iommu_ops *iort_iommu_configure(struct device *dev)
 	 * add_device callback for dev, replay it to get things in order.
 	 */
 	if (!err) {
-		ops = iort_fwspec_iommu_ops(dev->iommu_fwspec);
+		ops = iort_fwspec_iommu_ops(dev);
 		err = iort_add_device_replay(ops, dev);
 	}
 
