@@ -2,9 +2,9 @@
 
 #### Description
 
-The 4.19.90 kernel for running on Raspberry Pi, branch master is the branch on development.
+The 4.19 kernel for running on Raspberry Pi.
 
-This repository is based on [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) version kernel which is built into openEuler 20.03 LTS, and is merged with the 4.19.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
+This repository is based on [openEuler 20.09](https://gitee.com/openeuler/kernel/tree/openEuler-20.09/) version kernel, and is merged with the 4.19.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-4.19.y).
 
 #### Architecture Requirements
 
