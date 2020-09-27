@@ -2,9 +2,9 @@
 
 #### 介绍
 
-适用于树莓派 的 4.19.90 版本的内核源码，主开发分支为 master 分支。
+适用于树莓派 的 4.19.90 版本的内核源码。
 
-本仓库基于 openEuler 20.3 LTS 的 [4.19.90-2003.4.0](https://gitee.com/openeuler/kernel/tree/4.19.90-2003.4.0/) 版本的内核，合并了上游 [树莓派内核 4.19.y](https://github.com/raspberrypi/linux/tree/rpi-4.19.y) 的分支代码。
+本仓库基于 [openEuler 20.03 LTS](https://gitee.com/openeuler/kernel/tree/openEuler-1.0-LTS/) 版本的内核，合并了上游 [树莓派内核 4.19.y](https://github.com/raspberrypi/linux/tree/rpi-4.19.y) 的分支代码。
 
 #### 支持硬件
 
