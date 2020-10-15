@@ -4627,6 +4627,8 @@ static int __ext4_get_inode_loc(struct inode *inode,
 	bh = sb_getblk(sb, block);
 	if (unlikely(!bh))
 		return -ENOMEM;
+	if (ext4_simulate_fail(sb, EXT4_SIM_INODE_EIO))
+		goto simulate_eio;
 	if (!buffer_uptodate(bh)) {
 		lock_buffer(bh);
 
@@ -4723,6 +4725,7 @@ make_io:
 		submit_bh(REQ_OP_READ, REQ_META | REQ_PRIO, bh);
 		wait_on_buffer(bh);
 		if (!buffer_uptodate(bh)) {
+		simulate_eio:
 			EXT4_ERROR_INODE_BLOCK(inode, block,
 					       "unable to read itable block");
 			brelse(bh);
@@ -4930,7 +4933,8 @@ struct inode *__ext4_iget(struct super_block *sb, unsigned long ino,
 					      sizeof(gen));
 	}
 
-	if (!ext4_inode_csum_verify(inode, raw_inode, ei)) {
+	if (!ext4_inode_csum_verify(inode, raw_inode, ei) ||
+	    ext4_simulate_fail(sb, EXT4_SIM_INODE_CRC)) {
 		ext4_error_inode(inode, function, line, 0,
 				 "iget: checksum invalid");
 		ret = -EFSBADCRC;
