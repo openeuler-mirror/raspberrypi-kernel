@@ -682,6 +682,9 @@ static inline void dev_iommu_fwspec_set(struct device *dev,
 	dev->iommu_fwspec = fwspec;
 }
 
+int iommu_probe_device(struct device *dev);
+void iommu_release_device(struct device *dev);
+
 extern int iommu_sva_bind_device(struct device *dev, struct mm_struct *mm,
 				int *pasid, unsigned long flags, void *drvdata);
 extern int iommu_sva_unbind_device(struct device *dev, int pasid);
