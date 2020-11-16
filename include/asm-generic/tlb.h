@@ -137,7 +137,6 @@
  *  architecture uses the Linux page-tables natively.
  *
  */
-#define HAVE_GENERIC_MMU_GATHER
 
 #ifdef CONFIG_HAVE_RCU_TABLE_FREE
 /*
