@@ -46,6 +46,7 @@
 #include <linux/pkeys.h>
 #include <linux/oom.h>
 #include <linux/sched/mm.h>
+#include <linux/share_pool.h>
 
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
@@ -178,6 +179,7 @@ static struct vm_area_struct *remove_vma(struct vm_area_struct *vma)
 	if (vma->vm_file)
 		fput(vma->vm_file);
 	mpol_put(vma_policy(vma));
+	sp_area_drop(vma);
 	vm_area_free(vma);
 	return next;
 }
@@ -1119,6 +1121,10 @@ struct vm_area_struct *vma_merge(struct mm_struct *mm,
 	if (vm_flags & VM_SPECIAL)
 		return NULL;
 
+	/* don't merge this kind of vma as sp_area couldn't be merged */
+	if (sp_check_vm_share_pool(vm_flags))
+		return NULL;
+
 	if (prev)
 		next = prev->vm_next;
 	else
@@ -1373,16 +1379,20 @@ int unregister_mmap_notifier(struct notifier_block *nb)
 EXPORT_SYMBOL_GPL(unregister_mmap_notifier);
 #endif
 
+static unsigned long __mmap_region(struct mm_struct *mm,
+				   struct file *file, unsigned long addr,
+				   unsigned long len, vm_flags_t vm_flags,
+				   unsigned long pgoff, struct list_head *uf);
+
 /*
  * The caller must hold down_write(&current->mm->mmap_sem).
  */
-unsigned long do_mmap(struct file *file, unsigned long addr,
-			unsigned long len, unsigned long prot,
-			unsigned long flags, vm_flags_t vm_flags,
-			unsigned long pgoff, unsigned long *populate,
-			struct list_head *uf)
+unsigned long __do_mmap(struct mm_struct *mm, struct file *file,
+			unsigned long addr, unsigned long len,
+			unsigned long prot, unsigned long flags,
+			vm_flags_t vm_flags, unsigned long pgoff,
+			unsigned long *populate, struct list_head *uf)
 {
-	struct mm_struct *mm = current->mm;
 	int pkey = 0;
 
 	*populate = 0;
@@ -1406,6 +1416,10 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 
 	if (!(flags & MAP_FIXED))
 		addr = round_hint_to_min(addr);
+
+	/* the MAP_DVPP couldn't work with MAP_SHARE_POOL */
+	if ((flags & MAP_DVPP) && sp_mmap_check(flags))
+		return -EINVAL;
 
 	/* Careful about overflows.. */
 	len = PAGE_ALIGN(len);
@@ -1568,13 +1582,24 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	if (is_set_cdmmask())
 		vm_flags |= ((numanode << CHECKNODE_BITS) & CHECKNODE_MASK);
 
-	addr = mmap_region(file, addr, len, vm_flags, pgoff, uf);
+	addr = __mmap_region(mm, file, addr, len, vm_flags, pgoff, uf);
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
 	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
 		*populate = len;
 	return addr;
 }
+
+/*
+ * The caller must hold down_write(&current->mm->mmap_sem).
+ */
+unsigned long do_mmap(struct file *file, unsigned long addr, unsigned long len,
+		      unsigned long prot, unsigned long flags, vm_flags_t vm_flags,
+		      unsigned long pgoff, unsigned long *populate, struct list_head *uf)
+{
+	return __do_mmap(current->mm, file, addr, len, prot, flags, vm_flags, pgoff, populate, uf);
+}
+
 
 unsigned long ksys_mmap_pgoff(unsigned long addr, unsigned long len,
 			      unsigned long prot, unsigned long flags,
@@ -1716,11 +1741,11 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 	return (vm_flags & (VM_NORESERVE | VM_SHARED | VM_WRITE)) == VM_WRITE;
 }
 
-unsigned long mmap_region(struct file *file, unsigned long addr,
-		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff,
-		struct list_head *uf)
+static unsigned long __mmap_region(struct mm_struct *mm, struct file *file,
+				   unsigned long addr, unsigned long len,
+				   vm_flags_t vm_flags, unsigned long pgoff,
+				   struct list_head *uf)
 {
-	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma, *prev;
 	int error;
 	struct rb_node **rb_link, *rb_parent;
@@ -1880,6 +1905,13 @@ unacct_error:
 	if (charged)
 		vm_unacct_memory(charged);
 	return error;
+}
+
+unsigned long mmap_region(struct file *file, unsigned long addr,
+			  unsigned long len, vm_flags_t vm_flags,
+			  unsigned long pgoff, struct list_head *uf)
+{
+	return __mmap_region(current->mm, file, addr, len, vm_flags, pgoff, uf);
 }
 
 unsigned long unmapped_area(struct vm_unmapped_area_info *info)
@@ -2133,6 +2165,8 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	if (enable_mmap_dvpp)
 		dvpp_mmap_get_area(&info, flags);
 
+	sp_area_work_around(&info);
+
 	return vm_unmapped_area(&info);
 }
 #endif
@@ -2183,6 +2217,8 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	if (enable_mmap_dvpp)
 		dvpp_mmap_get_area(&info, flags);
 
+	sp_area_work_around(&info);
+
 	addr = vm_unmapped_area(&info);
 
 	/*
@@ -2199,6 +2235,8 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 
 		if (enable_mmap_dvpp)
 			dvpp_mmap_get_area(&info, flags);
+
+		sp_area_work_around(&info);
 
 		addr = vm_unmapped_area(&info);
 	}
@@ -2870,6 +2908,22 @@ int vm_munmap(unsigned long start, size_t len)
 	return ret;
 }
 EXPORT_SYMBOL(vm_munmap);
+
+int do_vm_munmap(struct task_struct *tsk, unsigned long start, size_t len)
+{
+	int ret;
+	struct mm_struct *mm = tsk->mm;
+	LIST_HEAD(uf);
+
+	if (down_write_killable(&mm->mmap_sem))
+		return -EINTR;
+
+	ret = do_munmap(mm, start, len, &uf);
+	up_write(&mm->mmap_sem);
+	userfaultfd_unmap_complete(mm, &uf);
+	return ret;
+}
+EXPORT_SYMBOL(do_vm_munmap);
 
 SYSCALL_DEFINE2(munmap, unsigned long, addr, size_t, len)
 {

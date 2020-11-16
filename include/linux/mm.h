@@ -230,6 +230,10 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_MERGEABLE	0x80000000	/* KSM may merge identical pages */
 #define VM_PA32BIT	0x400000000	/* Physical address is within 4G */
 
+#ifdef CONFIG_ASCEND_SHARE_POOL
+#define VM_HUGE_SPECIAL 0x800000000     /* Special hugepage flag used by share pool */
+#endif
+
 #ifdef CONFIG_COHERENT_DEVICE
 #define VM_CDM		0x100000000	/* Contains coherent device memory */
 #endif
@@ -240,11 +244,13 @@ extern unsigned int kobjsize(const void *objp);
 #define VM_HIGH_ARCH_BIT_2	34	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_3	35	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_BIT_4	36	/* bit only usable on 64-bit architectures */
+#define VM_HIGH_ARCH_BIT_5	37	/* bit only usable on 64-bit architectures */
 #define VM_HIGH_ARCH_0	BIT(VM_HIGH_ARCH_BIT_0)
 #define VM_HIGH_ARCH_1	BIT(VM_HIGH_ARCH_BIT_1)
 #define VM_HIGH_ARCH_2	BIT(VM_HIGH_ARCH_BIT_2)
 #define VM_HIGH_ARCH_3	BIT(VM_HIGH_ARCH_BIT_3)
 #define VM_HIGH_ARCH_4	BIT(VM_HIGH_ARCH_BIT_4)
+#define VM_HIGH_ARCH_5	BIT(VM_HIGH_ARCH_BIT_5)
 #endif /* CONFIG_ARCH_USES_HIGH_VMA_FLAGS */
 
 #ifdef CONFIG_ARCH_HAS_PKEYS
@@ -259,6 +265,12 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_PKEY_BIT4  0
 #endif
 #endif /* CONFIG_ARCH_HAS_PKEYS */
+
+#if defined(CONFIG_ASCEND_SHARE_POOL)
+# define VM_SHARE_POOL VM_HIGH_ARCH_5
+#else
+# define VM_SHARE_POOL VM_NONE
+#endif
 
 #if defined(CONFIG_X86)
 # define VM_PAT		VM_ARCH_1	/* PAT reserves whole VMA at once (x86) */
@@ -559,7 +571,7 @@ int region_intersects(resource_size_t offset, size_t size, unsigned long flags,
 /* Support for virtually mapped pages */
 struct page *vmalloc_to_page(const void *addr);
 unsigned long vmalloc_to_pfn(const void *addr);
-
+struct page *vmalloc_to_hugepage(const void *addr);
 /*
  * Determine if an address is within the vmalloc range
  *
@@ -2344,6 +2356,10 @@ extern unsigned long do_mmap(struct file *file, unsigned long addr,
 	unsigned long len, unsigned long prot, unsigned long flags,
 	vm_flags_t vm_flags, unsigned long pgoff, unsigned long *populate,
 	struct list_head *uf);
+extern unsigned long __do_mmap(struct mm_struct *mm, struct file *file,
+	unsigned long addr, unsigned long len, unsigned long prot,
+	unsigned long flags, vm_flags_t vm_flags, unsigned long pgoff,
+	unsigned long *populate, struct list_head *uf);
 extern int do_munmap(struct mm_struct *, unsigned long, size_t,
 		     struct list_head *uf);
 
@@ -2364,14 +2380,21 @@ static inline void mm_populate(unsigned long addr, unsigned long len)
 	/* Ignore errors */
 	(void) __mm_populate(addr, len, 1);
 }
+extern int do_mm_populate(struct mm_struct *mm, unsigned long addr, unsigned long len,
+			  int ignore_errors);
 #else
 static inline void mm_populate(unsigned long addr, unsigned long len) {}
+int do_mm_populate(struct mm_struct *mm, unsigned long addr, unsigned long len,
+		   int ignore_errors)
+{
+}
 #endif
 
 /* These take the mm semaphore themselves */
 extern int __must_check vm_brk(unsigned long, unsigned long);
 extern int __must_check vm_brk_flags(unsigned long, unsigned long, unsigned long);
 extern int vm_munmap(unsigned long, size_t);
+extern int do_vm_munmap(struct task_struct *tsk, unsigned long start, size_t len);
 extern unsigned long __must_check vm_mmap(struct file *, unsigned long,
         unsigned long, unsigned long,
         unsigned long, unsigned long);
