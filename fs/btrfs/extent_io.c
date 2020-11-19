@@ -3809,7 +3809,6 @@ int btree_write_cache_pages(struct address_space *mapping,
 		.sync_io = wbc->sync_mode == WB_SYNC_ALL,
 	};
 	int ret = 0;
-	int flush_ret;
 	int done = 0;
 	int nr_to_write_done = 0;
 	struct pagevec pvec;
@@ -3908,6 +3907,11 @@ retry:
 		scanned = 1;
 		index = 0;
 		goto retry;
+	}
+	ASSERT(ret <= 0);
+	if (ret < 0) {
+		end_write_bio(&epd, ret);
+		return ret;
 	}
 	/*
 	 * If something went wrong, don't allow any metadata write bio to be
