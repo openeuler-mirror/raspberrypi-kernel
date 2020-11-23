@@ -1737,6 +1737,15 @@ static struct ctl_table vm_table[] = {
 		.extra1		= &zero,
 		.extra2		= &one,
 	},
+	{
+		.procname	= "sharepool_debug_mode",
+		.data		= &sysctl_sp_debug_mode,
+		.maxlen		= sizeof(sysctl_sp_debug_mode),
+		.mode		= 0600,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= &zero,
+		.extra2		= &one,
+	},
 #endif
 	{ }
 };
