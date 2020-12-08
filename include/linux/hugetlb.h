@@ -384,6 +384,9 @@ struct page *hugetlb_alloc_hugepage(int nid);
 int hugetlb_insert_hugepage_pte(struct mm_struct *mm, unsigned long addr,
 				pgprot_t prot, struct page *hpage);
 #endif
+int hugetlb_insert_hugepage_pte_by_pa(struct mm_struct *mm,
+                                    unsigned long vir_addr,
+                                    pgprot_t prot, unsigned long phy_addr);
 int hugetlb_insert_hugepage(struct vm_area_struct *vma, unsigned long addr,
 			    struct page *hpage, pgprot_t prot);
 
