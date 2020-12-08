@@ -3352,8 +3352,13 @@ const struct vm_operations_struct hugetlb_vm_ops = {
 	.pagesize = hugetlb_vm_op_pagesize,
 };
 
+#ifdef CONFIG_ASCEND_SHARE_POOL
+pte_t make_huge_pte(struct vm_area_struct *vma, struct page *page,
+				int writable)
+#else
 static pte_t make_huge_pte(struct vm_area_struct *vma, struct page *page,
 				int writable)
+#endif
 {
 	pte_t entry;
 
@@ -3370,6 +3375,9 @@ static pte_t make_huge_pte(struct vm_area_struct *vma, struct page *page,
 
 	return entry;
 }
+#ifdef CONFIG_ASCEND_SHARE_POOL
+EXPORT_SYMBOL(make_huge_pte);
+#endif
 
 static void set_huge_ptep_writable(struct vm_area_struct *vma,
 				   unsigned long address, pte_t *ptep)
@@ -3962,12 +3970,6 @@ retry:
 		}
 
 		page = alloc_huge_page(vma, haddr, 0);
-		if (IS_ERR(page) && sp_check_vm_share_pool(vma->vm_flags)) {
-			page = alloc_huge_page_node(hstate_file(vma->vm_file),
-						    numa_mem_id());
-			if (!page)
-				page = ERR_PTR(-ENOMEM);
-		}
 		if (IS_ERR(page)) {
 			/*
 			 * Returning error will result in faulting task being
@@ -4155,7 +4157,15 @@ vm_fault_t hugetlb_fault(struct mm_struct *mm, struct vm_area_struct *vma,
 
 	entry = huge_ptep_get(ptep);
 	if (huge_pte_none(entry)) {
+#ifdef CONFIG_ASCEND_SHARE_POOL
+		if (sp_check_vm_share_pool(vma->vm_flags)) {
+			ret = sharepool_no_page(mm, vma, mapping, idx, address, ptep, flags);
+		} else {
+			ret = hugetlb_no_page(mm, vma, mapping, idx, address, ptep, flags);
+		}
+#else
 		ret = hugetlb_no_page(mm, vma, mapping, idx, address, ptep, flags);
+#endif
 		goto out_mutex;
 	}
 
