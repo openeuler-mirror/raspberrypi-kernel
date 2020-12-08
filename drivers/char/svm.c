@@ -1919,8 +1919,6 @@ static unsigned long svm_sp_alloc_mem(unsigned long __user *arg)
 		return EFAULT;
 	}
 
-	pr_notice("svm: [sp alloc] caller %s(%d/%d); return addr 0x%pK, size %lu\n",
-		  current->comm, current->tgid, current->pid, addr, spallocinfo.size);
 	sp_dump_stack();
 
 	spallocinfo.addr = (uintptr_t)addr;
@@ -1960,8 +1958,6 @@ static int svm_sp_free_mem(unsigned long __user *arg)
 		return -EFAULT;
 	}
 
-	pr_notice("svm: [sp free] caller %s(%d/%d); addr 0x%pK\n",
-		  current->comm, current->tgid, current->pid, (void *)spallocinfo.addr);
 	sp_dump_stack();
 
 	return 0;
