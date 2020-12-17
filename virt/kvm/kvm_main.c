@@ -1297,7 +1297,7 @@ int kvm_clear_dirty_log_protect(struct kvm *kvm,
 	if (as_id >= KVM_ADDRESS_SPACE_NUM || id >= KVM_USER_MEM_SLOTS)
 		return -EINVAL;
 
-	if ((log->first_page & 63) || (log->num_pages & 63))
+	if (log->first_page & 63)
 		return -EINVAL;
 
 	slots = __kvm_memslots(kvm, as_id);
@@ -1310,7 +1310,8 @@ int kvm_clear_dirty_log_protect(struct kvm *kvm,
 	n = kvm_dirty_bitmap_bytes(memslot);
 
 	if (log->first_page > memslot->npages ||
-	    log->num_pages > memslot->npages - log->first_page)
+	    log->num_pages > memslot->npages - log->first_page ||
+	    (log->num_pages < memslot->npages - log->first_page && (log->num_pages & 63)))
 		return -EINVAL;
 
 	*flush = false;
