@@ -5398,6 +5398,7 @@ static int ext4_do_update_inode(handle_t *handle,
 		if (err)
 			goto out_brelse;
 		ext4_set_feature_large_file(sb);
+		ext4_superblock_csum_set(sb);
 		ext4_handle_sync(handle);
 		err = ext4_handle_dirty_super(handle, sb);
 	}
