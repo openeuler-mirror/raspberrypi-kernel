@@ -230,6 +230,13 @@ int main(int argc, char *argv[])
 	    interval = TEST_HOST_LOOP_INTERVAL;
 	int opt;
 
+#ifdef USE_CLEAR_DIRTY_LOG
+	if (!kvm_check_cap(KVM_CAP_MANUAL_DIRTY_LOG_PROTECT)) {
+		fprintf(stderr, "KVM_CLEAR_DIRTY_LOG not available, skipping tests\n");
+		exit(KSFT_SKIP);
+	}
+#endif
+
 	while ((opt = getopt(argc, argv, "hi:I:")) != -1) {
 		switch (opt) {
 		case 'i':
@@ -257,6 +264,14 @@ int main(int argc, char *argv[])
 	host_bmap_track = bitmap_alloc(TEST_MEM_PAGES);
 
 	vm = vm_create_default(VCPU_ID, TEST_MEM_PAGES, guest_code);
+
+#ifdef USE_CLEAR_DIRTY_LOG
+	struct kvm_enable_cap cap = {};
+
+	cap.cap = KVM_CAP_MANUAL_DIRTY_LOG_PROTECT;
+	cap.args[0] = 1;
+	vm_enable_cap(vm, &cap);
+#endif
 
 	/* Add an extra memory slot for testing dirty logging */
 	vm_userspace_mem_region_add(vm, VM_MEM_SRC_ANONYMOUS,
@@ -288,6 +303,10 @@ int main(int argc, char *argv[])
 		/* Give the vcpu thread some time to dirty some pages */
 		usleep(interval * 1000);
 		kvm_vm_get_dirty_log(vm, TEST_MEM_SLOT_INDEX, bmap);
+#ifdef USE_CLEAR_DIRTY_LOG
+		kvm_vm_clear_dirty_log(vm, TEST_MEM_SLOT_INDEX, bmap, 0,
+				       DIV_ROUND_UP(host_num_pages, 64) * 64);
+#endif
 		vm_dirty_log_verify(bmap, *iteration);
 		(*iteration)++;
 	}
