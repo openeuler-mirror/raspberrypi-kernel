@@ -141,6 +141,11 @@ static void kvm_uevent_notify_change(unsigned int type, struct kvm *kvm);
 static unsigned long long kvm_createvm_count;
 static unsigned long long kvm_active_vms;
 
+/* debugfs entries of Detail For vcpu stat EXtension */
+__weak struct dfx_kvm_stats_debugfs_item dfx_debugfs_entries[] = {
+	{ NULL }
+};
+
 __weak void kvm_arch_mmu_notifier_invalidate_range(struct kvm *kvm,
 						   unsigned long start, unsigned long end)
 {
@@ -2908,8 +2913,9 @@ static long kvm_vcpu_ioctl(struct file *filp,
 			if (oldpid)
 				synchronize_rcu();
 			put_pid(oldpid);
-			/* NOTE: only work on aarch64 */
+#if defined(CONFIG_X86) || defined(CONFIG_ARM64)
 			vcpu->stat.pid = current->pid;
+#endif /* defined(CONFIG_X86) || defined (CONFIG_ARM64) */
 		}
 		r = kvm_arch_vcpu_ioctl_run(vcpu, vcpu->run);
 		trace_kvm_userspace_exit(vcpu->run->exit_reason, r);
