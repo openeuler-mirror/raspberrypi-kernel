@@ -36,6 +36,9 @@ static struct timecounter *timecounter;
 static unsigned int host_vtimer_irq;
 static u32 host_vtimer_irq_flags;
 
+static unsigned int bgtimer_advance_cycles;
+module_param(bgtimer_advance_cycles, uint, 0644);
+
 static DEFINE_STATIC_KEY_FALSE(has_gic_active_state);
 
 static const struct kvm_irq_level default_ptimer_irq = {
@@ -135,6 +138,7 @@ static u64 kvm_timer_earliest_exp(struct kvm_vcpu *vcpu)
 	u64 min_virt = ULLONG_MAX, min_phys = ULLONG_MAX;
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
 	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	u64 min_expire;
 
 	if (kvm_timer_irq_can_fire(vtimer))
 		min_virt = kvm_timer_compute_delta(vtimer);
@@ -146,7 +150,17 @@ static u64 kvm_timer_earliest_exp(struct kvm_vcpu *vcpu)
 	if ((min_virt == ULLONG_MAX) && (min_phys == ULLONG_MAX))
 		return 0;
 
-	return min(min_virt, min_phys);
+	min_expire = min(min_virt, min_phys);
+
+	if (bgtimer_advance_cycles) {
+		u64 ns = cyclecounter_cyc2ns(timecounter->cc,
+					  bgtimer_advance_cycles,
+					  timecounter->mask,
+					  &timecounter->frac);
+		min_expire = min_expire > ns ? min_expire - ns : 0;
+	}
+
+	return min_expire;
 }
 
 static enum hrtimer_restart kvm_bg_timer_expire(struct hrtimer *hrt)
@@ -354,6 +368,7 @@ static void kvm_timer_blocking(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
 	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	u64 expire;
 
 	/*
 	 * If both timers are not capable of raising interrupts (disabled or
@@ -362,11 +377,30 @@ static void kvm_timer_blocking(struct kvm_vcpu *vcpu)
 	if (!kvm_timer_irq_can_fire(vtimer) && !kvm_timer_irq_can_fire(ptimer))
 		return;
 
+	if (hrtimer_active(&timer->bg_timer))
+		return;
+
 	/*
 	 * At least one guest time will expire. Schedule a background timer.
 	 * Set the earliest expiration time among the guest timers.
 	 */
-	soft_timer_start(&timer->bg_timer, kvm_timer_earliest_exp(vcpu));
+	expire = kvm_timer_earliest_exp(vcpu);
+
+	if (expire && bgtimer_advance_cycles) {
+		if (vtimer->cnt_cval > bgtimer_advance_cycles)
+			vtimer->cnt_cval -= bgtimer_advance_cycles;
+	}
+
+	soft_timer_start(&timer->bg_timer, expire);
+}
+
+void kvm_timer_schedule(struct kvm_vcpu *vcpu)
+{
+	if (!bgtimer_advance_cycles || kvm_timer_is_pending(vcpu))
+		return;
+
+	vtimer_save_state(vcpu);
+	kvm_timer_blocking(vcpu);
 }
 
 static void kvm_timer_unblocking(struct kvm_vcpu *vcpu)
@@ -396,6 +430,12 @@ static void vtimer_restore_state(struct kvm_vcpu *vcpu)
 	vtimer->loaded = true;
 out:
 	local_irq_restore(flags);
+}
+
+void kvm_timer_unschedule(struct kvm_vcpu *vcpu)
+{
+	vtimer_restore_state(vcpu);
+	kvm_timer_unblocking(vcpu);
 }
 
 static void set_cntvoff(u64 cntvoff)

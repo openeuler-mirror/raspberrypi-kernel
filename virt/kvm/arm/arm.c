@@ -378,11 +378,15 @@ void kvm_arch_vcpu_blocking(struct kvm_vcpu *vcpu)
 	preempt_enable();
 
 	kvm_vgic_v4_enable_doorbell(vcpu);
+
+	kvm_timer_schedule(vcpu);
 }
 
 void kvm_arch_vcpu_unblocking(struct kvm_vcpu *vcpu)
 {
 	kvm_vgic_v4_disable_doorbell(vcpu);
+
+	kvm_timer_unschedule(vcpu);
 }
 
 int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
