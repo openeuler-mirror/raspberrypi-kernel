@@ -757,6 +757,8 @@ static inline void vgic_clear_lr(struct kvm_vcpu *vcpu, int lr)
 
 static inline void vgic_set_underflow(struct kvm_vcpu *vcpu)
 {
+	trace_vgic_set_underflow(vcpu->vcpu_id);
+
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_set_underflow(vcpu);
 	else
@@ -844,6 +846,8 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.vgic_cpu.used_lrs = count;
 
+	trace_vgic_flush_lr_state(vcpu->vcpu_id, vcpu->arch.vgic_cpu.used_lrs,
+				  multi_sgi);
 	/* Nuke remaining LRs */
 	for ( ; count < kvm_vgic_global_state.nr_lr; count++)
 		vgic_clear_lr(vcpu, count);

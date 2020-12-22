@@ -69,6 +69,41 @@ TRACE_EVENT(compute_ap_list_depth,
 		  __entry->enabled, __entry->hw, __entry->config)
 );
 
+TRACE_EVENT(vgic_set_underflow,
+	TP_PROTO(unsigned long vcpu_id),
+	TP_ARGS(vcpu_id),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+	),
+
+	TP_printk("VCPU: %ld", __entry->vcpu_id)
+);
+
+TRACE_EVENT(vgic_flush_lr_state,
+	TP_PROTO(unsigned long vcpu_id, unsigned int used_lrs, bool multi_sgi),
+	TP_ARGS(vcpu_id, used_lrs, multi_sgi),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(unsigned int,	used_lrs)
+		__field(bool,			multi_sgi)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->used_lrs	= used_lrs;
+		__entry->multi_sgi	= multi_sgi;
+	),
+
+	TP_printk("VCPU: %ld, used_lrs: %d, multi_sgi: %d",
+		  __entry->vcpu_id, __entry->used_lrs, __entry->multi_sgi)
+);
+
 
 #endif /* _TRACE_VGIC_H */
 
