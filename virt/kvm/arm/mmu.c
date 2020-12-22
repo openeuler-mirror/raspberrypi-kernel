@@ -2511,6 +2511,7 @@ static bool kvm_need_flush_vm(struct kvm_vcpu *vcpu)
 void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled)
 {
 	bool now_enabled = vcpu_has_cache_enabled(vcpu);
+	unsigned long timeout = jiffies + HZ;
 
 	/*
 	 * If switching the MMU+caches on, need to invalidate the caches.
@@ -2523,6 +2524,13 @@ void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled)
 	/* Caches are now on, stop trapping VM ops (until a S/W op) */
 	if (now_enabled)
 		*vcpu_hcr(vcpu) &= ~HCR_TVM;
+
+	/*
+	 * Guest's APs will fail to online after waiting for 1 second.
+	 * Tell luser about this issue if already timeout here (mostly
+	 * due to the bad cache maintenance performance).
+	 */
+	WARN_ON(time_after(jiffies, timeout));
 
 	trace_kvm_toggle_cache(*vcpu_pc(vcpu), was_enabled, now_enabled);
 }
