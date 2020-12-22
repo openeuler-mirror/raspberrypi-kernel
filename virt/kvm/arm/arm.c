@@ -850,6 +850,11 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 * Enter the guest
 		 */
 		trace_kvm_entry(vcpu->vcpu_id, *vcpu_pc(vcpu));
+		trace_kvm_entry_more(*vcpu_pc(vcpu), vcpu_read_elr_el1(vcpu),
+			*vcpu_cpsr(vcpu),
+			*vcpu_hcr(vcpu), kvm_vcpu_get_hsr(vcpu),
+			kvm_vcpu_get_hfar(vcpu),
+			vcpu->arch.fault.hpfar_el2);
 		guest_enter_irqoff();
 
 		if (has_vhe()) {
@@ -914,6 +919,11 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 */
 		guest_exit();
 		trace_kvm_exit(ret, kvm_vcpu_trap_get_class(vcpu), *vcpu_pc(vcpu));
+		trace_kvm_exit_more(*vcpu_pc(vcpu), vcpu_read_elr_el1(vcpu),
+				*vcpu_cpsr(vcpu),
+				*vcpu_hcr(vcpu), kvm_vcpu_get_hsr(vcpu),
+				kvm_vcpu_get_hfar(vcpu),
+				vcpu->arch.fault.hpfar_el2);
 
 		/* Exit types that need handling before we can be preempted */
 		handle_exit_early(vcpu, run, ret);

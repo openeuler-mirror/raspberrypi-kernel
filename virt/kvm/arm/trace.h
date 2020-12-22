@@ -281,6 +281,71 @@ TRACE_EVENT(kvm_pvsched_kick_vcpu,
 		  __entry->vcpu_id, __entry->target_vcpu_id)
 );
 
+TRACE_EVENT(kvm_entry_more,
+	TP_PROTO(unsigned long vcpu_pc, unsigned long elr_el1,
+		 unsigned long cpsr, unsigned long hcr,
+		 unsigned long hsr, unsigned long hxfar,
+		 unsigned long long hpfar),
+	TP_ARGS(vcpu_pc, elr_el1, cpsr, hcr, hsr, hxfar, hpfar),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_pc)
+		__field(unsigned long,	elr_el1)
+		__field(unsigned long,	cpsr)
+		__field(unsigned long,	hcr)
+		__field(unsigned long,	hsr)
+		__field(unsigned long,	hxfar)
+		__field(unsigned long long, hpfar)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_pc		= vcpu_pc;
+		__entry->elr_el1		= elr_el1;
+		__entry->cpsr			= cpsr;
+		__entry->hcr			= hcr;
+		__entry->hsr			= hsr;
+		__entry->hxfar			= hxfar;
+		__entry->hpfar			= hpfar;
+	),
+
+	TP_printk("PC: 0x%08lx, ELR_EL1: 0x%08lx, CPSR: 0x%08lx, HCR: 0x%08lx, HSR: 0x%08lx, HXFAR: 0x%08lx, HPFAR: 0x%llx",
+		  __entry->vcpu_pc, __entry->elr_el1, __entry->cpsr,
+		  __entry->hcr, __entry->hsr, __entry->hxfar, __entry->hpfar)
+);
+
+TRACE_EVENT(kvm_exit_more,
+	TP_PROTO(unsigned long vcpu_pc, unsigned long elr_el1,
+		 unsigned long cpsr, unsigned long hcr,
+		 unsigned long hsr, unsigned long hxfar,
+		 unsigned long long hpfar),
+	TP_ARGS(vcpu_pc, elr_el1, cpsr, hcr, hsr, hxfar, hpfar),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_pc)
+		__field(unsigned long,	elr_el1)
+		__field(unsigned long,	cpsr)
+		__field(unsigned long,	hcr)
+		__field(unsigned long,	hsr)
+		__field(unsigned long,	hxfar)
+		__field(unsigned long long, hpfar)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_pc		= vcpu_pc;
+		__entry->elr_el1		= elr_el1;
+		__entry->cpsr			= cpsr;
+		__entry->hcr			= hcr;
+		__entry->hsr			= hsr;
+		__entry->hxfar			= hxfar;
+		__entry->hpfar			= hpfar;
+	),
+
+	TP_printk("PC: 0x%08lx, ELR_EL1: 0x%08lx, CPSR: 0x%08lx, HCR: 0x%08lx, HSR: 0x%08lx, HXFAR: 0x%08lx, HPFAR: 0x%llx",
+		  __entry->vcpu_pc, __entry->elr_el1, __entry->cpsr,
+		  __entry->hcr, __entry->hsr, __entry->hxfar, __entry->hpfar)
+);
+
+
 #endif /* _TRACE_KVM_H */
 
 #undef TRACE_INCLUDE_PATH
