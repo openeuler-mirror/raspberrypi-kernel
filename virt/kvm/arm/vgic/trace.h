@@ -27,6 +27,49 @@ TRACE_EVENT(vgic_update_irq_pending,
 		  __entry->vcpu_id, __entry->irq, __entry->level)
 );
 
+TRACE_EVENT(compute_ap_list_depth,
+	TP_PROTO(unsigned long vcpu_id, __u32 irq, __u32 hwirq,  __u8 source,
+		 __u8 priority, bool level, bool pending_latch, bool active,
+		 bool enabled, bool hw, bool config),
+	TP_ARGS(vcpu_id, irq, hwirq, source, priority, level, pending_latch,
+		active, enabled, hw, config),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(__u32,		irq)
+		__field(__u32,		hwirq)
+		__field(__u8,		source)
+		__field(__u8,		priority)
+		__field(bool,		level)
+		__field(bool,		pending_latch)
+		__field(bool,		active)
+		__field(bool,		enabled)
+		__field(bool,		hw)
+		__field(bool,		config)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->irq		= irq;
+		__entry->hwirq		= hwirq;
+		__entry->source		= source;
+		__entry->priority	= priority;
+		__entry->level		= level;
+		__entry->pending_latch	= pending_latch;
+		__entry->active		= active;
+		__entry->enabled	= enabled;
+		__entry->hw			= hw;
+		__entry->config		= config;
+	),
+
+	TP_printk("VCPU: %ld, IRQ %d, HWIRQ: %d, SOURCE: %d, PRIORITY: %d, level: %d, pending_latch: %d, active: %d, enabled: %d, hw: %d, config: %d",
+		  __entry->vcpu_id, __entry->irq, __entry->hwirq,
+		  __entry->source, __entry->priority, __entry->level,
+		  __entry->pending_latch,  __entry->active,
+		  __entry->enabled, __entry->hw, __entry->config)
+);
+
+
 #endif /* _TRACE_VGIC_H */
 
 #undef TRACE_INCLUDE_PATH

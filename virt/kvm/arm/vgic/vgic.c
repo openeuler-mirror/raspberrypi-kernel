@@ -779,6 +779,10 @@ static int compute_ap_list_depth(struct kvm_vcpu *vcpu,
 		int w;
 
 		raw_spin_lock(&irq->irq_lock);
+		trace_compute_ap_list_depth(vcpu->vcpu_id, irq->intid,
+			irq->hwintid, irq->source, irq->priority,
+			irq->line_level, irq->pending_latch, irq->active,
+			irq->enabled, irq->hw, irq->config);
 		/* GICv2 SGIs can count for more than one... */
 		w = vgic_irq_get_lr_count(irq);
 		raw_spin_unlock(&irq->irq_lock);
