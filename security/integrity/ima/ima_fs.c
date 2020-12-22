@@ -393,18 +393,16 @@ static ssize_t ima_write_data(struct file *file, const char __user *buf,
 			result = ima_parse_add_rule(data);
 		}
 	} else if (dentry == digest_list_data) {
-		if (!ima_check_current_is_parser()) {
+		if (!ima_current_is_parser()) {
 			result = -EACCES;
 		} else {
-			ima_set_parser();
 			result = ima_parse_compact_list(datalen, data,
 							DIGEST_LIST_OP_ADD);
 		}
 	} else if (dentry == digest_list_data_del) {
-		if (!ima_check_current_is_parser()) {
+		if (!ima_current_is_parser()) {
 			result = -EACCES;
 		} else {
-			ima_set_parser();
 			result = ima_parse_compact_list(datalen, data,
 							DIGEST_LIST_OP_DEL);
 		}
@@ -479,6 +477,11 @@ static int ima_open_data_upload(struct inode *inode, struct file *filp)
 	}
 	if (test_and_set_bit(flag, &ima_fs_flags))
 		return -EBUSY;
+
+	if (dentry == digest_list_data || dentry == digest_list_data_del)
+		if (ima_check_current_is_parser())
+			ima_set_parser();
+
 	return 0;
 }
 
