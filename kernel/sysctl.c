@@ -668,6 +668,15 @@ static struct ctl_table kern_table[] = {
 		.extra1		= &one,
 		.extra2		= &one,
 	},
+#ifdef CONFIG_ASCEND_BOOT_CRASH_KERNEL
+	{
+		.procname       = "kexec_bios_start",
+		.data           = &kexec_bios_start,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = kexec_sysctl_handler,
+	},
+#endif
 #endif
 #ifdef CONFIG_MODULES
 	{

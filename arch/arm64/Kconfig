@@ -1560,6 +1560,18 @@ config ASCEND_SHARE_POOL
 	help
 	  This feature allows multiple processes to share virtual memory both
 	  in kernel and user level, which is only enabled for ascend platform.
+
+config ASCEND_BOOT_CRASH_KERNEL
+	bool "Support of boot crash kernel from bios"
+	default y
+	help
+	  When the CPU is hunged up by hardware errors, board can't restart
+	  by software reset. It needs to be reset by an external reset
+	  (for example: saftyisland). Bios check this kind reset, enter
+	  the crash kernel and dump the vmcore.
+	  Usage:
+	       1. add a node name:kexecmailbox to dts config.
+	       2. after kexec run, set sysctl -w kernel.kexec_bios_start=1.
 endif
 
 endmenu

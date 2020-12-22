@@ -987,6 +987,34 @@ struct kimage *kexec_image;
 struct kimage *kexec_crash_image;
 int kexec_load_disabled;
 
+#ifdef CONFIG_ASCEND_BOOT_CRASH_KERNEL
+int kexec_bios_start;
+int kexec_sysctl_handler(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
+{
+	int err;
+
+	err = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (err)
+		return err;
+
+	if (write && kexec_bios_start) {
+		if (mutex_trylock(&kexec_mutex)) {
+			if (kexec_crash_image)
+				err = bios_setup_kimage(kexec_crash_image);
+			else
+				err = -EINVAL;
+			mutex_unlock(&kexec_mutex);
+		}
+	}
+	if (err)
+		kexec_bios_start = 0;
+
+	return err;
+}
+#endif
+
 /*
  * No panic_cpu check version of crash_kexec().  This function is called
  * only when panic_cpu holds the current CPU number; this is the only CPU
@@ -994,6 +1022,10 @@ int kexec_load_disabled;
  */
 void __noclone __crash_kexec(struct pt_regs *regs)
 {
+#ifdef CONFIG_ASCEND_BOOT_CRASH_KERNEL
+	if (kexec_bios_start)
+		return;
+#endif
 	/* Take the kexec_mutex here to prevent sys_kexec_load
 	 * running on one cpu from replacing the crash kernel
 	 * we are using after a panic on a different cpu.

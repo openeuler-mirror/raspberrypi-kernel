@@ -285,6 +285,14 @@ extern struct kimage *kexec_image;
 extern struct kimage *kexec_crash_image;
 extern int kexec_load_disabled;
 
+#ifdef CONFIG_ASCEND_BOOT_CRASH_KERNEL
+extern int bios_setup_kimage(struct kimage *kimage);
+extern int kexec_bios_start;
+extern int kexec_sysctl_handler(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos);
+#endif
+
 #ifndef kexec_flush_icache_page
 #define kexec_flush_icache_page(page)
 #endif
