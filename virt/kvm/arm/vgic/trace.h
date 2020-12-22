@@ -148,6 +148,99 @@ TRACE_EVENT(vgic_v3_fold_lr_state,
 		  __entry->vcpu_id, __entry->irq, __entry->val, __entry->lr)
 );
 
+TRACE_EVENT(vgic_v3_populate_lr_vgic_if,
+	TP_PROTO(unsigned long vcpu_id, unsigned long hcr, unsigned long vmcr,
+		 unsigned long sre, unsigned long ap0r0,
+		 unsigned long ap0r1, unsigned long ap0r2, unsigned long ap0r3,
+		 unsigned long ap1r0, unsigned long ap1r1, unsigned long ap1r2,
+		 unsigned long ap1r3),
+	TP_ARGS(vcpu_id, hcr, vmcr, sre, ap0r0, ap0r1, ap0r2, ap0r3,
+		ap1r0, ap1r1, ap1r2, ap1r3),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(unsigned long,	hcr)
+		__field(unsigned long,	vmcr)
+		__field(unsigned long,	sre)
+		__field(unsigned long,	ap0r0)
+		__field(unsigned long,	ap0r1)
+		__field(unsigned long,	ap0r2)
+		__field(unsigned long,	ap0r3)
+		__field(unsigned long,	ap1r0)
+		__field(unsigned long,	ap1r1)
+		__field(unsigned long,	ap1r2)
+		__field(unsigned long,	ap1r3)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->hcr		= hcr;
+		__entry->vmcr		= vmcr;
+		__entry->sre		= sre;
+		__entry->ap0r0		= ap0r0;
+		__entry->ap0r1		= ap0r1;
+		__entry->ap0r2		= ap0r2;
+		__entry->ap0r3		= ap0r3;
+		__entry->ap1r0		= ap1r0;
+		__entry->ap1r1		= ap1r1;
+		__entry->ap1r2		= ap1r2;
+		__entry->ap1r3		= ap1r3;
+	),
+
+	TP_printk("VCPU: %ld, HCR: 0x%lx, VMCR: 0x%lx, SRE: 0x%lx, ap0r0: 0x%lx, ap0r1: 0x%lx, ap0r2: 0x%lx, ap0r3: 0x%lx, ap1r0: 0x%lx, ap1r1: 0x%lx, ap1r2: 0x%lx, ap1r3: 0x%lx,",
+		  __entry->vcpu_id, __entry->hcr, __entry->vmcr,
+		  __entry->sre, __entry->ap0r0, __entry->ap0r1,
+		  __entry->ap0r2, __entry->ap0r3, __entry->ap1r0,
+		  __entry->ap1r1, __entry->ap1r2, __entry->ap1r3)
+);
+
+TRACE_EVENT(vgic_v3_fold_lr_state_vgic_if,
+	TP_PROTO(unsigned long vcpu_id, unsigned long hcr, unsigned long vmcr,
+		 unsigned long sre, unsigned long ap0r0,
+		 unsigned long ap0r1, unsigned long ap0r2, unsigned long ap0r3,
+		 unsigned long ap1r0, unsigned long ap1r1, unsigned long ap1r2,
+		 unsigned long ap1r3),
+	TP_ARGS(vcpu_id, hcr, vmcr, sre, ap0r0, ap0r1, ap0r2, ap0r3,
+		ap1r0, ap1r1, ap1r2, ap1r3),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(unsigned long,	hcr)
+		__field(unsigned long,	vmcr)
+		__field(unsigned long,	sre)
+		__field(unsigned long,	ap0r0)
+		__field(unsigned long,	ap0r1)
+		__field(unsigned long,	ap0r2)
+		__field(unsigned long,	ap0r3)
+		__field(unsigned long,	ap1r0)
+		__field(unsigned long,	ap1r1)
+		__field(unsigned long,	ap1r2)
+		__field(unsigned long,	ap1r3)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->hcr		= hcr;
+		__entry->vmcr		= vmcr;
+		__entry->sre		= sre;
+		__entry->ap0r0		= ap0r0;
+		__entry->ap0r1		= ap0r1;
+		__entry->ap0r2		= ap0r2;
+		__entry->ap0r3		= ap0r3;
+		__entry->ap1r0		= ap1r0;
+		__entry->ap1r1		= ap1r1;
+		__entry->ap1r2		= ap1r2;
+		__entry->ap1r3		= ap1r3;
+	),
+
+	TP_printk("VCPU: %ld, HCR: 0x%lx, VMCR: 0x%lx, SRE: 0x%lx, ap0r0: 0x%lx, ap0r1: 0x%lx, ap0r2: 0x%lx, ap0r3: 0x%lx, ap1r0: 0x%lx, ap1r1: 0x%lx, ap1r2: 0x%lx, ap1r3: 0x%lx,",
+		  __entry->vcpu_id, __entry->hcr, __entry->vmcr,
+		  __entry->sre, __entry->ap0r0, __entry->ap0r1,
+		  __entry->ap0r2,  __entry->ap0r3, __entry->ap1r0,
+		  __entry->ap1r1, __entry->ap1r2,  __entry->ap1r3)
+);
+
+
 #endif /* _TRACE_VGIC_H */
 
 #undef TRACE_INCLUDE_PATH

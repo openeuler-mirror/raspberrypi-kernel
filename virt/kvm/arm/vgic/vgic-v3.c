@@ -127,6 +127,13 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 	}
 
 	vgic_cpu->used_lrs = 0;
+
+	trace_vgic_v3_fold_lr_state_vgic_if(vcpu->vcpu_id, cpuif->vgic_hcr,
+			cpuif->vgic_vmcr, cpuif->vgic_sre,
+			cpuif->vgic_ap0r[0], cpuif->vgic_ap0r[1],
+			cpuif->vgic_ap0r[2], cpuif->vgic_ap0r[3],
+			cpuif->vgic_ap1r[0], cpuif->vgic_ap1r[1],
+			cpuif->vgic_ap1r[2], cpuif->vgic_ap1r[3]);
 }
 
 /* Requires the irq to be locked already */
@@ -211,6 +218,18 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 
 	vcpu->arch.vgic_cpu.vgic_v3.vgic_lr[lr] = val;
 	trace_vgic_v3_populate_lr(vcpu->vcpu_id, irq->intid, val, lr);
+	trace_vgic_v3_populate_lr_vgic_if(vcpu->vcpu_id,
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_hcr,
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_vmcr,
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_sre,
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap0r[0],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap0r[1],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap0r[2],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap0r[3],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap1r[0],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap1r[1],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap1r[2],
+			vcpu->arch.vgic_cpu.vgic_v3.vgic_ap1r[3]);
 }
 
 void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr)
