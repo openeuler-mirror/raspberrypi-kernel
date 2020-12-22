@@ -570,7 +570,8 @@ static void evm_reset_status(struct inode *inode, int bit)
 
 	iint = integrity_iint_find(inode);
 	if (iint) {
-		if (evm_initialized & EVM_ALLOW_METADATA_WRITES)
+		if ((evm_initialized & EVM_ALLOW_METADATA_WRITES) ||
+		    evm_ignoremode)
 			set_bit(bit, &iint->atomic_flags);
 
 		iint->evm_status = INTEGRITY_UNKNOWN;
