@@ -827,7 +827,9 @@ static long vfio_unmap_unpin(struct vfio_iommu *iommu, struct vfio_dma *dma,
 		phys_addr_t phys, next;
 
 		phys = iommu_iova_to_phys(domain->domain, iova);
-		if (WARN_ON(!phys)) {
+		if (!phys) {
+			pr_warn("%s: phys is 0, it's normal if arch is arm\n",
+					  __func__);
 			iova += PAGE_SIZE;
 			continue;
 		}
