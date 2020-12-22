@@ -104,6 +104,49 @@ TRACE_EVENT(vgic_flush_lr_state,
 		  __entry->vcpu_id, __entry->used_lrs, __entry->multi_sgi)
 );
 
+TRACE_EVENT(vgic_v3_populate_lr,
+	TP_PROTO(unsigned long vcpu_id, __u32 irq, __u64 val, int lr),
+	TP_ARGS(vcpu_id, irq, val, lr),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(__u32,		irq)
+		__field(__u64,		val)
+		__field(int,		lr)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->irq		= irq;
+		__entry->val		= val;
+		__entry->lr		= lr;
+	),
+
+	TP_printk("VCPU: %ld, IRQ: %d, LR: 0x%llx, Index: %d",
+		  __entry->vcpu_id, __entry->irq, __entry->val, __entry->lr)
+);
+
+TRACE_EVENT(vgic_v3_fold_lr_state,
+	TP_PROTO(unsigned long vcpu_id, __u32 irq, __u64 val, int lr),
+	TP_ARGS(vcpu_id, irq, val, lr),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,	vcpu_id)
+		__field(__u32,		irq)
+		__field(__u64,		val)
+		__field(int,		lr)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id	= vcpu_id;
+		__entry->irq		= irq;
+		__entry->val		= val;
+		__entry->lr		= lr;
+	),
+
+	TP_printk("VCPU: %ld, IRQ: %d, LR: 0x%llx, Index: %d",
+		  __entry->vcpu_id, __entry->irq, __entry->val, __entry->lr)
+);
 
 #endif /* _TRACE_VGIC_H */
 

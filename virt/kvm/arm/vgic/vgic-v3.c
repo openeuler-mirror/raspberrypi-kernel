@@ -21,6 +21,7 @@
 #include <asm/kvm_asm.h>
 
 #include "vgic.h"
+#include "trace.h"
 
 static bool group0_trap;
 static bool group1_trap;
@@ -66,6 +67,8 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 			intid = val & GICH_LR_VIRTUALID;
 			is_v2_sgi = vgic_irq_is_sgi(intid);
 		}
+
+		trace_vgic_v3_fold_lr_state(vcpu->vcpu_id, intid, val, lr);
 
 		/* Notify fds when the guest EOI'ed a level-triggered IRQ */
 		if (lr_signals_eoi_mi(val) && vgic_valid_spi(vcpu->kvm, intid))
@@ -207,6 +210,7 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 	val |= (u64)irq->priority << ICH_LR_PRIORITY_SHIFT;
 
 	vcpu->arch.vgic_cpu.vgic_v3.vgic_lr[lr] = val;
+	trace_vgic_v3_populate_lr(vcpu->vcpu_id, irq->intid, val, lr);
 }
 
 void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr)
