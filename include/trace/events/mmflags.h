@@ -106,7 +106,9 @@ IF_HAVE_PG_UNCACHED(PG_uncached,	"uncached"	)		\
 IF_HAVE_PG_HWPOISON(PG_hwpoison,	"hwpoison"	)		\
 IF_HAVE_PG_IDLE(PG_young,		"young"		)		\
 IF_HAVE_PG_IDLE(PG_idle,		"idle"),			\
-	{1UL << PG_percpu_ref,		"percpu_ref"	}
+	{1UL << PG_percpu_ref,		"percpu_ref"	},	\
+	{1UL << PG_reserve_pgflag_0,	"reserve_pgflag_0"},	\
+	{1UL << PG_reserve_pgflag_1,	"reserve_pgflag_1"}
 
 #define show_page_flags(flags)						\
 	(flags) ? __print_flags(flags, "|",				\

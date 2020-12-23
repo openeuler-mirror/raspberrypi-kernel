@@ -103,6 +103,14 @@ enum pageflags {
 	PG_idle,
 #endif
 	PG_percpu_ref,
+
+	/* Add reserved page flags for internal extension. For the new page
+	 * flags which backported from kernel upstream, please place them
+	 * behind the the reserved page flags.
+	 */
+	PG_reserve_pgflag_0,
+	PG_reserve_pgflag_1,
+
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
