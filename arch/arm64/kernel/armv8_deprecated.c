@@ -61,7 +61,7 @@ struct insn_emulation {
 
 static LIST_HEAD(insn_emulation);
 static int nr_insn_emulated __initdata;
-static DEFINE_RAW_SPINLOCK(insn_emulation_lock);
+static __cacheline_aligned DEFINE_RAW_SPINLOCK(insn_emulation_lock);
 
 static void register_emulation_hooks(struct insn_emulation_ops *ops)
 {
