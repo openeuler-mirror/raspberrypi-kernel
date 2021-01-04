@@ -24,7 +24,7 @@ do
 	fi
 done
 
-if [ -n $LIRCDEV ];
+if [[ -n $LIRCDEV ]];
 then
 	TYPE=lirc_mode2
 	./test_lirc_mode2_user $LIRCDEV

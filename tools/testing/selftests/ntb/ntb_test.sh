@@ -555,7 +555,7 @@ function cleanup()
 
 cleanup
 
-if ! [[ $$DONT_CLEANUP ]]; then
+if ! [[ $DONT_CLEANUP ]]; then
 	trap cleanup EXIT
 fi
 

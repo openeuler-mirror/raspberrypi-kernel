@@ -265,7 +265,7 @@ if [[ -n ${ZSH_VERSION-} ]]; then
 		let cword=CURRENT-1
 		emulate ksh -c __perf_main
 		let _ret && _default && _ret=0
-		return _ret
+		return $_ret
 	}
 
 	compdef _perf perf

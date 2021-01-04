@@ -222,7 +222,7 @@ do_suspend()
 		return 1
 	fi
 
-	if [ -n $filename ]; then
+	if [[ -n $filename ]]; then
 		present=$(cat $SYSFS/power/state | grep $filename)
 
 		if [ -z "$present" ]; then
