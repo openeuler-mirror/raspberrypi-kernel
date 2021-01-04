@@ -2707,7 +2707,6 @@ again:
 
 fail:
 	if (shift > PAGE_SHIFT) {
-		free_vm_area(area);
 		shift = PAGE_SHIFT;
 		align = real_align;
 		size = real_size;
