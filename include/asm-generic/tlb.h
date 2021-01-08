@@ -624,6 +624,8 @@ static inline void tlb_flush_p4d_range(struct mmu_gather *tlb,
 
 #endif /* CONFIG_MMU */
 
+#ifndef tlb_migrate_finish
 #define tlb_migrate_finish(mm) do {} while (0)
+#endif
 
 #endif /* _ASM_GENERIC__TLB_H */
