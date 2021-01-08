@@ -30,6 +30,7 @@ config M68K
 	select HAVE_MEMBLOCK
 	select ARCH_DISCARD_MEMBLOCK
 	select NO_BOOTMEM
+	select MMU_GATHER_NO_RANGE if MMU
 
 config CPU_BIG_ENDIAN
 	def_bool y
