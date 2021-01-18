@@ -1055,8 +1055,6 @@ static inline void __mmput(struct mm_struct *mm)
 {
 	VM_BUG_ON(atomic_read(&mm->mm_users));
 
-	sp_group_exit(mm);
-
 	uprobe_clear_state(mm);
 	exit_aio(mm);
 	ksm_exit(mm);
@@ -1083,6 +1081,8 @@ static inline void __mmput(struct mm_struct *mm)
 void mmput(struct mm_struct *mm)
 {
 	might_sleep();
+
+	sp_group_exit(mm);
 
 	if (atomic_dec_and_test(&mm->mm_users))
 		__mmput(mm);
