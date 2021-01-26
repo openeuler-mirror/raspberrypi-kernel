@@ -1,0 +1,35 @@
+* Hisilicon Hi3559AV100 Clock Controller
+
+The Hi3559AV100 clock controller generates and supplies clock to various
+controllers within the HI3559AV100 SoC.
+
+- compatible: the compatible should be one of the following strings to
+  indicate the clock controller functionality. Should be one of the following.
+
+  - "hisilicon,hi3559av100-clock"
+  - "hisilicon,hi3559av100-shub-clock"
+
+- reg: physical base address of the controller and length of memory mapped
+  region.
+
+- #clock-cells: Should be <1>.
+
+Each clock is assigned an identifier and client nodes use this identifier
+to specify the clock which they consume.
+
+All these identifier could be found in <dt-bindings/clock/hi3559av100-clock.h>.
+
+Examples:
+
+	clock: clock0 {
+		compatible = "hisilicon,hi3559av100-clock", "syscon";
+		#clock-cells = <1>;
+		reg = <0x0 0x12010000 0x0 0x10000>;
+	};
+
+	uart0: uart@12100000 {
+		compatible = "arm,pl011", "arm,primecell";
+		reg = <0x12100000 0x1000>;
+		clocks = <&clock HI3559AV100_UART0_CLK>;
+		clock-names = "apb_pclk";
+	};
