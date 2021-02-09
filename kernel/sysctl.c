@@ -71,6 +71,8 @@
 
 #include "../lib/kstrtox.h"
 
+#include "../lib/kstrtox.h"
+
 #include <linux/uaccess.h>
 #include <asm/processor.h>
 
