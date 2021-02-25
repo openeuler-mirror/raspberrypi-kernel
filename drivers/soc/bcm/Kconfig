@@ -23,6 +23,10 @@ config RASPBERRYPI_POWER
 	  This enables support for the RPi power domains which can be enabled
 	  or disabled via the RPi firmware.
 
+config OPENEULER_RASPBERRYPI
+	bool "Compile kernel for Raspberry Pi"
+	default n
+
 config SOC_BCM63XX
 	bool "Broadcom 63xx SoC drivers"
 	depends on BMIPS_GENERIC || COMPILE_TEST
