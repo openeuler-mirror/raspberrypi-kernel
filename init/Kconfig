@@ -1,4 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
+config OPENEULER_RASPBERRYPI
+	bool "Compile kernel for Raspberry Pi"
+    default n
+
 config DEFCONFIG_LIST
 	string
 	depends on !UML

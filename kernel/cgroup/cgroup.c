@@ -5723,11 +5723,13 @@ int __init cgroup_init(void)
 
 	mutex_unlock(&cgroup_mutex);
 
+#ifdef CONFIG_OPENEULER_RASPBERRYPI
 	/* Apply an implicit disable... */
 	cgroup_disable("memory");
 
 	/* ...knowing that an explicit enable will override it. */
 	cgroup_disable_mask &= ~cgroup_enable_mask;
+#endif
 
 	for_each_subsys(ss, ssid) {
 		if (ss->early_init) {
