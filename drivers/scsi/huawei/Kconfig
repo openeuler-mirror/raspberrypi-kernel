@@ -3,9 +3,10 @@
 #
 
 config SCSI_HUAWEI_FC
-	tristate "Huawei devices"
+	tristate "Huawei Fibre Channel Adapter"
 	depends on PCI && SCSI
 	depends on SCSI_FC_ATTRS
+	depends on ARM64 || X86_64
 	default m
 	---help---
 	  If you have a Fibre Channel PCI card belonging to this class, say Y.
