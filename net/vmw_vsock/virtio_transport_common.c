@@ -1075,9 +1075,9 @@ void virtio_transport_recv_pkt(struct virtio_transport *t,
 
 	vsk = vsock_sk(sk);
 
-	space_available = virtio_transport_space_update(sk, pkt);
-
 	lock_sock(sk);
+
+	space_available = virtio_transport_space_update(sk, pkt);
 
 	/* Check if sk has been released before lock_sock */
 	if (sk->sk_shutdown == SHUTDOWN_MASK) {
