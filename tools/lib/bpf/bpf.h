@@ -71,7 +71,7 @@ struct bpf_load_program_attr {
 };
 
 /* Recommend log buffer size */
-#define BPF_LOG_BUF_SIZE (256 * 1024)
+#define BPF_LOG_BUF_SIZE (UINT32_MAX >> 8) /* verifier maximum in kernels <= 5.1 */
 int bpf_load_program_xattr(const struct bpf_load_program_attr *load_attr,
 			   char *log_buf, size_t log_buf_sz);
 int bpf_load_program(enum bpf_prog_type type, const struct bpf_insn *insns,
