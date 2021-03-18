@@ -855,6 +855,7 @@
 	EXIT_CALL							\
 	*(.discard)							\
 	*(.discard.*)							\
+	*(.modinfo)							\
 	}
 
 /**
