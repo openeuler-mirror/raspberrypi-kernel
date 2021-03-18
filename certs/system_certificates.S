@@ -40,7 +40,7 @@ system_certificate_list_size:
 	.globl pgp_public_keys
 pgp_public_keys:
 __pgp_key_list_start:
-#ifdef CONFIG_PGP_PRELOAD_PUBLIC_KEYS
+#ifdef HAVE_PUBRING_GPG
 	.incbin "certs/pubring.gpg"
 #endif
 __pgp_key_list_end:

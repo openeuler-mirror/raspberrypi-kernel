@@ -4,12 +4,6 @@
 #
 
 obj-$(CONFIG_SYSTEM_TRUSTED_KEYRING) += system_keyring.o system_certificates.o
-ifdef CONFIG_PGP_PRELOAD_PUBLIC_KEYS
-ifneq ($(shell ls certs/pubring.gpg 2> /dev/null), certs/pubring.gpg)
-$(shell touch certs/pubring.gpg)
-endif
-$(obj)/system_certificates.o: certs/pubring.gpg
-endif
 obj-$(CONFIG_SYSTEM_BLACKLIST_KEYRING) += blacklist.o
 ifneq ($(CONFIG_SYSTEM_BLACKLIST_HASH_LIST),"")
 obj-$(CONFIG_SYSTEM_BLACKLIST_KEYRING) += blacklist_hashes.o
@@ -26,6 +20,13 @@ $(obj)/system_certificates.o: $(obj)/x509_certificate_list
 
 # Cope with signing_key.x509 existing in $(srctree) not $(objtree)
 AFLAGS_system_certificates.o := -I$(srctree)
+
+ifdef CONFIG_PGP_PRELOAD_PUBLIC_KEYS
+ifeq ($(shell ls $(srctree)/certs/pubring.gpg 2> /dev/null), $(srctree)/certs/pubring.gpg)
+AFLAGS_system_certificates.o += -DHAVE_PUBRING_GPG
+$(obj)/system_certificates.o: $(srctree)/certs/pubring.gpg
+endif
+endif
 
 quiet_cmd_extract_certs  = EXTRACT_CERTS   $(patsubst "%",%,$(2))
       cmd_extract_certs  = scripts/extract-cert $(2) $@ || ( rm $@; exit 1)
