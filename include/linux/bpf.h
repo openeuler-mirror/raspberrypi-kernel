@@ -154,6 +154,7 @@ enum bpf_arg_type {
 	ARG_CONST_SIZE_OR_ZERO,	/* number of bytes accessed from memory or 0 */
 
 	ARG_PTR_TO_CTX,		/* pointer to context */
+	ARG_PTR_TO_CTX_OR_NULL, /* pointer to context or NULL */
 	ARG_ANYTHING,		/* any (initialized) argument is ok */
 };
 
