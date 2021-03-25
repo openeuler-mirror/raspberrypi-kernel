@@ -240,6 +240,9 @@ int klp_check_calltrace(struct klp_patch *patch, int enable)
 	int ret = 0;
 
 	for_each_process_thread(g, t) {
+		/* the stack of migration thread cannot be obtained, skip it here*/
+		if (strncmp(t->comm, "migration/", 10) == 0)
+			continue;
 		ret = klp_check_stack(t, patch, enable);
 		if (ret)
 			goto out;
