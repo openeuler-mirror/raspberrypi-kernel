@@ -885,6 +885,15 @@ ip_local_reserved_ports - list of comma separated ranges
 
 	Default: Empty
 
+local_port_allocation - INTEGER
+	This is a per-namespace sysctl. It defines whether to use
+	sequential allocation of local ports. If it is set to zero,
+	even ports will be allocated to connect() while leaving odd
+	ports for bind(); If it is set to non-zero, sequential allocation
+	will be applied.
+
+	default: 0
+
 ip_unprivileged_port_start - INTEGER
 	This is a per-namespace sysctl.  It defines the first
 	unprivileged port in the network namespace.  Privileged ports

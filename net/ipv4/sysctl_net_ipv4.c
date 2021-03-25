@@ -683,6 +683,13 @@ static struct ctl_table ipv4_net_table[] = {
 		.proc_handler	= ipv4_local_port_range,
 	},
 	{
+		.procname	= "local_port_allocation",
+		.data		= &init_net.ipv4.sysctl_local_port_allocation,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
 		.procname	= "ip_local_reserved_ports",
 		.data		= &init_net.ipv4.sysctl_local_reserved_ports,
 		.maxlen		= 65536,
