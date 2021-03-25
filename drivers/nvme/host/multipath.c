@@ -346,7 +346,7 @@ static void nvme_mpath_set_live(struct nvme_ns *ns)
 		return;
 
 	if (!test_and_set_bit(NVME_NSHEAD_DISK_LIVE, &head->flags)) {
-		device_add_disk(&head->subsys->dev, head->disk);
+		device_add_disk(&head->subsys->dev, head->disk, NULL);
 		if (sysfs_create_group(&disk_to_dev(head->disk)->kobj,
 				&nvme_ns_id_attr_group))
 			dev_warn(&head->subsys->dev,
