@@ -1583,6 +1583,16 @@ config ASCEND_BOOT_CRASH_KERNEL
 	  Usage:
 	       1. add a node name:kexecmailbox to dts config.
 	       2. after kexec run, set sysctl -w kernel.kexec_bios_start=1.
+
+config ASCEND_CLEAN_CDM
+	bool "move the management structure for HBM to DDR"
+	def_bool n
+	depends on COHERENT_DEVICE
+	help
+	  The cdm nodes sometimes are easiler to raise an ECC error and it may
+	  cause the kernel crash if the essential structures went wrong. So move
+	  the management structures for hbm nodes to the ddr nodes of the same
+	  partion to reduce the probability of kernel crashes.
 endif
 
 endmenu
