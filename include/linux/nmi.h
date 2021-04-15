@@ -111,6 +111,7 @@ extern void hardlockup_detector_perf_disable(void);
 extern void hardlockup_detector_perf_enable(void);
 extern void hardlockup_detector_perf_cleanup(void);
 extern int hardlockup_detector_perf_init(void);
+extern bool enable_corelockup_detector;
 #else
 static inline void hardlockup_detector_perf_stop(void) { }
 static inline void hardlockup_detector_perf_restart(void) { }
