@@ -72,7 +72,7 @@ static void ath10k_usb_free_urb_to_pipe(struct ath10k_usb_pipe *pipe,
 
 	/* bail if this pipe is not initialized */
 	if (!pipe->ar_usb)
-		return NULL;
+		return;
 
 	spin_lock_irqsave(&pipe->ar_usb->cs_lock, flags);
 
