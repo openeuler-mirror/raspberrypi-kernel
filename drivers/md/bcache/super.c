@@ -8,6 +8,7 @@
  */
 
 #include "bcache.h"
+#include "acache.h"
 #include "btree.h"
 #include "debug.h"
 #include "extents.h"
@@ -2625,6 +2626,7 @@ static void bcache_exit(void)
 
 	if (bcache_major)
 		unregister_blkdev(bcache_major, "bcache");
+	acache_dev_exit();
 	unregister_reboot_notifier(&reboot);
 	mutex_destroy(&bch_register_lock);
 }
@@ -2695,6 +2697,8 @@ static int __init bcache_init(void)
 
 	bch_debug_init();
 	closure_debug_init();
+	if (acache_dev_init())
+		goto err;
 
 	bcache_is_reboot = false;
 
