@@ -105,6 +105,7 @@ rw_attribute(congested_write_threshold_us);
 
 rw_attribute(sequential_cutoff);
 rw_attribute(read_bypass);
+rw_attribute(inflight_block_enable);
 rw_attribute(data_csum);
 rw_attribute(cache_mode);
 rw_attribute(readahead_cache_policy);
@@ -249,6 +250,7 @@ SHOW(__bch_cached_dev)
 	var_printf(partial_stripes_expensive,	"%u");
 
 	var_hprint(sequential_cutoff);
+	var_print(inflight_block_enable);
 	var_print(read_bypass);
 	var_hprint(readahead);
 
@@ -346,6 +348,9 @@ STORE(__cached_dev)
 			    0, UINT_MAX);
 	sysfs_strtoul_clamp(read_bypass,
 			    dc->read_bypass,
+			    0, 1);
+	sysfs_strtoul_clamp(inflight_block_enable,
+			    dc->inflight_block_enable,
 			    0, 1);
 	d_strtoi_h(readahead);
 
@@ -513,6 +518,7 @@ static struct attribute *bch_cached_dev_files[] = {
 	&sysfs_partial_stripes_expensive,
 	&sysfs_sequential_cutoff,
 	&sysfs_read_bypass,
+	&sysfs_inflight_block_enable,
 	&sysfs_clear_stats,
 	&sysfs_running,
 	&sysfs_state,
