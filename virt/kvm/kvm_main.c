@@ -4273,6 +4273,35 @@ void __attribute__((weak)) kvm_arch_vcpu_stat_reset(struct kvm_vcpu_stat *vcpu_s
 #define DFX_MAX_VCPU		1024
 #define DFX_MAX_VCPU_STAT_SIZE	1024
 
+/*
+ * copy of seq_buf_alloc of kernel, kernel not export it
+ */
+static void *dfx_seq_buf_alloc(unsigned long size)
+{
+	return kvmalloc(size, GFP_KERNEL_ACCOUNT);
+}
+
+static void dfx_seq_buf_free(const void *buf)
+{
+	kvfree(buf);
+}
+
+static int dfx_seq_buf_alloc_vcpu(struct seq_file *p, int vcpu_nr)
+{
+	char *buf;
+	size_t size;
+
+	size = (vcpu_nr + 1) * DFX_MAX_VCPU_STAT_SIZE;
+	buf = dfx_seq_buf_alloc(size);
+	if (!buf)
+		return -ENOMEM;
+	if (p->buf)
+		dfx_seq_buf_free(p->buf);
+	p->buf = buf;
+	p->size = size;
+	return 0;
+}
+
 static int __dfx_vcpu_stats_get(struct seq_file *p, void *v)
 {
 	struct kvm *kvm;
@@ -4289,6 +4318,13 @@ static int __dfx_vcpu_stats_get(struct seq_file *p, void *v)
 	mutex_unlock(&kvm_lock);
 
 	vcpu_nr = min(vcpu_nr, DFX_MAX_VCPU);
+	if (!vcpu_nr) {
+		seq_putc(p, '\n');
+		return 0;
+	}
+
+	if (dfx_seq_buf_alloc_vcpu(p, vcpu_nr))
+		return -ENOMEM;
 	vcpu_stats = kzalloc(vcpu_nr * sizeof(struct kvm_vcpu_stat),
 			     GFP_KERNEL);
 	if (!vcpu_stats)
@@ -4330,9 +4366,7 @@ static int __dfx_vcpu_stats_get(struct seq_file *p, void *v)
 
 static int dfx_vcpu_stats_open(struct inode *inode, struct file *file)
 {
-	size_t size = DFX_MAX_VCPU_STAT_SIZE * (DFX_MAX_VCPU + 1);
-
-	return single_open_size(file, __dfx_vcpu_stats_get, NULL, size);
+	return single_open(file, __dfx_vcpu_stats_get, NULL);
 }
 
 static const struct file_operations dfx_stat_fops = {
