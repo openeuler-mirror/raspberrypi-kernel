@@ -4826,6 +4826,7 @@ CONFIG_TEE=m
 CONFIG_UACCE=y
 # CONFIG_WD_DUMMY_DEV is not set
 # CONFIG_SLIMBUS is not set
+# CONFIG_ITRACE is not set
 
 #
 # File systems
