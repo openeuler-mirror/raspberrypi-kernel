@@ -14,6 +14,7 @@
 
 #include <linux/typecheck.h>
 #include <asm/irqflags.h>
+#include <linux/itrace.h>
 
 /* Currently trace_softirqs_on/off is used only by lockdep */
 #ifdef CONFIG_PROVE_LOCKING
@@ -69,7 +70,11 @@ do {						\
  extern void stop_critical_timings(void);
  extern void start_critical_timings(void);
 #else
+#ifdef CONFIG_ITRACE_IRQSOFF
+# define stop_critical_timings() itrace_hardirqs_ignore()
+#else
 # define stop_critical_timings() do { } while (0)
+#endif
 # define start_critical_timings() do { } while (0)
 #endif
 
@@ -135,7 +140,44 @@ do {						\
 	} while (0)
 
 
-#else /* !CONFIG_TRACE_IRQFLAGS */
+#elif defined(CONFIG_ITRACE_IRQSOFF) /* CONFIG_ITRACE_IRQSOFF */
+
+#define local_irq_enable()				\
+	do {						\
+		itrace_hardirqs_on();			\
+		raw_local_irq_enable();			\
+	} while (0)
+
+#define local_irq_disable()				\
+	do {						\
+		raw_local_irq_disable();		\
+		itrace_hardirqs_off();			\
+	} while (0)
+
+#define local_irq_save(flags)				\
+	do {						\
+		raw_local_irq_save(flags);		\
+		itrace_hardirqs_off();			\
+	} while (0)
+
+#define local_irq_restore(flags)			\
+	do {						\
+		if (raw_irqs_disabled_flags(flags)) {	\
+			raw_local_irq_restore(flags);	\
+			itrace_hardirqs_off();		\
+		} else {				\
+			itrace_hardirqs_on();		\
+			raw_local_irq_restore(flags);	\
+		}					\
+	} while (0)
+
+#define safe_halt()					\
+	do {						\
+		itrace_hardirqs_on();			\
+		raw_safe_halt();			\
+	} while (0)
+
+#else
 
 #define local_irq_enable()	do { raw_local_irq_enable(); } while (0)
 #define local_irq_disable()	do { raw_local_irq_disable(); } while (0)
@@ -146,7 +188,7 @@ do {						\
 #define local_irq_restore(flags) do { raw_local_irq_restore(flags); } while (0)
 #define safe_halt()		do { raw_safe_halt(); } while (0)
 
-#endif /* CONFIG_TRACE_IRQFLAGS */
+#endif /* CONFIG_TRACE_IRQFLAGS && CONFIG_ITRACE_IRQFLAGS */
 
 #define local_save_flags(flags)	raw_local_save_flags(flags)
 

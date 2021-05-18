@@ -808,6 +808,17 @@ config ITRACE_IHANDLER
 
 	  Support dynamic disable and threshold setting.
 
+config ITRACE_IRQSOFF
+	bool "Support for tracing the irqsoff"
+	depends on !TRACE_IRQFLAGS && !IRQSOFF_TRACER && !PREEMPT_TRACER
+	default n
+	help
+	  Irqsoff tracer is a lightweight tracing tool. It can trace
+	  the areas that disable interrupts and saves the trace with
+	  the latency.
+
+	  Support dynamic disable and threshold setting.
+
 endif #ITRACE
 
 endif # TRACING_SUPPORT

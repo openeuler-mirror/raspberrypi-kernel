@@ -393,6 +393,98 @@ static const struct file_operations itrace_ihandler_proc_fops = {
 };
 #endif
 
+#ifdef CONFIG_ITRACE_IRQSOFF
+static int itrace_irqsoff_num_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", itrace_irqsoff_num_get());
+
+	return 0;
+}
+
+static ssize_t itrace_irqsoff_num_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *ppos)
+{
+	int ret;
+	int num;
+
+	ret = kstrtoint_from_user(buffer, count, 10, &num);
+	if (ret)
+		return ret;
+
+	if (num > IRQSOFF_INFO_NUM_MAX || num < IRQSOFF_INFO_NUM_MIN)
+		return -EINVAL;
+
+	itrace_irqsoff_num_set(num);
+
+	return count;
+}
+
+static int itrace_irqsoff_num_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, itrace_irqsoff_num_show, PDE_DATA(inode));
+}
+
+static const struct file_operations itrace_irqsoff_num_proc_fops = {
+	.open		= itrace_irqsoff_num_open,
+	.read		= seq_read,
+	.release	= single_release,
+	.write		= itrace_irqsoff_num_write,
+};
+
+static int itrace_irqsoff_show(struct seq_file *m, void *v)
+{
+	unsigned int i, j;
+	int online_cpus = num_online_cpus();
+	struct Irqsoff irqsoff;
+
+	for (i = 0; i < online_cpus; i++) {
+		itrace_irqsoff_get(&irqsoff, i);
+
+		/* print nothing while num is 0 */
+		if (irqsoff.num == 0)
+			continue;
+
+		seq_printf(m, "[irqsoff CPU%d]:\n", i);
+		for (j = 0; j < irqsoff.num; j++)
+			seq_printf(m, "  max_time:%llu(us) caller:%s\n",
+				   irqsoff.info[j].t_max / NSEC_PER_USEC,
+				   irqsoff.info[j].caller);
+	}
+
+	return 0;
+}
+
+static ssize_t itrace_irqsoff_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *ppos)
+{
+	int ret;
+	u64 val;
+
+	ret = kstrtoull_from_user(buffer, count, 10, &val);
+	if (ret)
+		return ret;
+
+	if (val > IRQSOFF_THRESHOLD_MAX)
+		return -EINVAL;
+
+	itrace_irqsoff_set(val);
+
+	return count;
+}
+
+static int itrace_irqsoff_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, itrace_irqsoff_show, PDE_DATA(inode));
+}
+
+static const struct file_operations itrace_irqsoff_proc_fops = {
+	.open		= itrace_irqsoff_open,
+	.read		= seq_read,
+	.release	= single_release,
+	.write		= itrace_irqsoff_write,
+};
+#endif
+
 static int irq_spurious_proc_show(struct seq_file *m, void *v)
 {
 	struct irq_desc *desc = irq_to_desc((long) m->private);
@@ -557,6 +649,12 @@ void init_irq_proc(void)
 		    &itrace_ihandler_proc_fops);
 	proc_create("irq/itrace_ihandler_num", 0644, NULL,
 		    &itrace_ihandler_num_proc_fops);
+#endif
+#ifdef CONFIG_ITRACE_IRQSOFF
+	proc_create("irq/itrace_irqsoff", 0644, NULL,
+		    &itrace_irqsoff_proc_fops);
+	proc_create("irq/itrace_irqsoff_num", 0644, NULL,
+		    &itrace_irqsoff_num_proc_fops);
 #endif
 }
 
