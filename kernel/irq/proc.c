@@ -12,6 +12,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
 #include <linux/mutex.h>
+#include <linux/itrace.h>
 
 #include "internals.h"
 
@@ -299,6 +300,99 @@ static int irq_node_proc_show(struct seq_file *m, void *v)
 }
 #endif
 
+#ifdef CONFIG_ITRACE_IHANDLER
+static int itrace_ihandler_num_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%d\n", itrace_ihandler_num_get());
+
+	return 0;
+}
+
+static ssize_t itrace_ihandler_num_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *ppos)
+{
+	int ret;
+	int num;
+
+	ret = kstrtoint_from_user(buffer, count, 10, &num);
+	if (ret)
+		return ret;
+
+	if (num > IHANDLER_INFO_NUM_MAX || num < IHANDLER_INFO_NUM_MIN)
+		return -EINVAL;
+
+	itrace_ihandler_num_set(num);
+
+	return count;
+}
+
+static int itrace_ihandler_num_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, itrace_ihandler_num_show, PDE_DATA(inode));
+}
+
+static const struct file_operations itrace_ihandler_num_proc_fops = {
+	.open		= itrace_ihandler_num_open,
+	.read		= seq_read,
+	.release	= single_release,
+	.write		= itrace_ihandler_num_write,
+};
+
+static int itrace_ihandler_show(struct seq_file *m, void *v)
+{
+	unsigned int i, j;
+	struct Ihandler ihandler;
+	int online_cpus = num_online_cpus();
+
+	for (i = 0; i < online_cpus; i++) {
+		itrace_ihandler_get(&ihandler, i);
+
+		/* print nothing while num is 0 */
+		if (ihandler.num == 0)
+			return 0;
+
+		seq_printf(m, "[irq_handler CPU%d]:\n", i);
+		for (j = 0; j < ihandler.num; j++)
+			seq_printf(m, "  irq:%d name:%s max_time:%llu(us) count:%u\n",
+				   ihandler.info[j].irq, ihandler.info[j].name,
+				   ihandler.info[j].t_max / NSEC_PER_USEC,
+				   ihandler.info[j].ct);
+	}
+
+	return 0;
+}
+
+static ssize_t itrace_ihandler_write(struct file *file,
+		const char __user *buffer, size_t count, loff_t *ppos)
+{
+	int ret;
+	u64 val;
+
+	ret = kstrtoull_from_user(buffer, count, 10, &val);
+	if (ret)
+		return ret;
+
+	if (val > IHANDLER_THRESHOLD_MAX)
+		return -EINVAL;
+
+	itrace_ihandler_set(val);
+
+	return count;
+}
+
+static int itrace_ihandler_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, itrace_ihandler_show, PDE_DATA(inode));
+}
+
+static const struct file_operations itrace_ihandler_proc_fops = {
+	.open		= itrace_ihandler_open,
+	.read		= seq_read,
+	.release	= single_release,
+	.write		= itrace_ihandler_write,
+};
+#endif
+
 static int irq_spurious_proc_show(struct seq_file *m, void *v)
 {
 	struct irq_desc *desc = irq_to_desc((long) m->private);
@@ -458,6 +552,12 @@ void init_irq_proc(void)
 	 */
 	for_each_irq_desc(irq, desc)
 		register_irq_proc(irq, desc);
+#ifdef CONFIG_ITRACE_IHANDLER
+	proc_create("irq/itrace_ihandler", 0644, NULL,
+		    &itrace_ihandler_proc_fops);
+	proc_create("irq/itrace_ihandler_num", 0644, NULL,
+		    &itrace_ihandler_num_proc_fops);
+#endif
 }
 
 #ifdef CONFIG_GENERIC_IRQ_SHOW

@@ -788,5 +788,27 @@ config GCOV_PROFILE_FTRACE
 
 endif # FTRACE
 
+menuconfig ITRACE
+	bool "Itrace Support"
+	help
+	  Itrace(Interrupt Tracing) is a lightweight interrupt tracing
+	  tool.
+	  It can trace the areas that interrupt handler function and
+	  disable interrupts.
+
+if ITRACE
+
+config ITRACE_IHANDLER
+	bool "Support for tracing the interrupt handler function"
+	default n
+	help
+	  Ihandler(Interrupt Handler) tracer can trace and calculate
+	  the time consumed of the hardware irq function and list the
+	  name, number and duration of the interrupt.
+
+	  Support dynamic disable and threshold setting.
+
+endif #ITRACE
+
 endif # TRACING_SUPPORT
 

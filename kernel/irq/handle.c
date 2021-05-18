@@ -13,6 +13,7 @@
 #include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/kernel_stat.h>
+#include <linux/itrace.h>
 
 #include <trace/events/irq.h>
 
@@ -146,7 +147,9 @@ irqreturn_t __handle_irq_event_percpu(struct irq_desc *desc, unsigned int *flags
 		irqreturn_t res;
 
 		trace_irq_handler_entry(irq, action);
+		itrace_ihandler_entry();
 		res = action->handler(irq, action->dev_id);
+		itrace_ihandler_exit(irq, action->name);
 		trace_irq_handler_exit(irq, action, res);
 
 		if (WARN_ONCE(!irqs_disabled(),"irq %u handler %pF enabled interrupts\n",
