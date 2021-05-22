@@ -31,6 +31,15 @@ HOSTLDLIBS_sign-file = $(CRYPTO_LIBS)
 HOSTCFLAGS_extract-cert.o = $(CRYPTO_CFLAGS)
 HOSTLDLIBS_extract-cert = $(CRYPTO_LIBS)
 
+ifdef CONFIG_UNWINDER_ORC
+ifeq ($(ARCH),x86_64)
+ARCH := x86
+endif
+HOSTCFLAGS_sorttable.o += -I$(srctree)/tools/objtool/arch/$(SRCARCH)/include
+HOSTCFLAGS_sorttable.o += -DUNWINDER_ORC_ENABLED
+HOSTLDLIBS_sorttable = -lpthread
+endif
+
 always		:= $(hostprogs-y) $(hostprogs-m)
 
 # The following hostprogs-y programs are only build on demand
