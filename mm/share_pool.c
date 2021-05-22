@@ -3133,7 +3133,7 @@ struct page *sp_alloc_pages(struct vm_struct *area, gfp_t mask,
 					  unsigned int page_order, int node)
 {
 	if (area->flags & VM_HUGE_PAGES)
-		return hugetlb_alloc_hugepage(NUMA_NO_NODE);
+		return hugetlb_alloc_hugepage(NUMA_NO_NODE, HUGETLB_ALLOC_NONE);
 	else
 		return alloc_pages_node(node, mask, page_order);
 }
