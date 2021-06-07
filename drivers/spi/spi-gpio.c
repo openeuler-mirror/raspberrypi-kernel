@@ -387,7 +387,7 @@ static int spi_gpio_probe(struct platform_device *pdev)
 		return -ENODEV;
 #endif
 
-	master = spi_alloc_master(&pdev->dev, sizeof(*spi_gpio));
+	master = devm_spi_alloc_master(&pdev->dev, sizeof(*spi_gpio));
 	if (!master)
 		return -ENOMEM;
 
