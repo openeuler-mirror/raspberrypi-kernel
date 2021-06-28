@@ -152,7 +152,7 @@ static inline void sp_init_mm(struct mm_struct *mm)
 }
 
 extern int sp_group_add_task(int pid, int spg_id);
-extern void sp_group_exit(struct mm_struct *mm);
+extern int sp_group_exit(struct mm_struct *mm);
 extern void sp_group_post_exit(struct mm_struct *mm);
 extern int sp_group_id_by_pid(int pid);
 extern int sp_group_walk(int spg_id, void *data, int (*func)(struct mm_struct *mm, void *));
@@ -295,8 +295,9 @@ static inline int sp_group_add_task(int pid, int spg_id)
 	return -EPERM;
 }
 
-static inline void sp_group_exit(struct mm_struct *mm)
+static inline int sp_group_exit(struct mm_struct *mm)
 {
+	return 0;
 }
 
 static inline void sp_group_post_exit(struct mm_struct *mm)
