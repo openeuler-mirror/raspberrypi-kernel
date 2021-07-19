@@ -53,6 +53,13 @@ static const char * const error_actions[] = {
 	NULL
 };
 
+static const char * const writeback_state[] = {
+	"default",
+	"quick",
+	"slow",
+	NULL
+};
+
 write_attribute(attach);
 write_attribute(detach);
 write_attribute(unregister);
@@ -102,6 +109,9 @@ read_attribute(cutoff_writeback);
 read_attribute(cutoff_writeback_sync);
 rw_attribute(congested_read_threshold_us);
 rw_attribute(congested_write_threshold_us);
+rw_attribute(gc_sectors);
+rw_attribute(traffic_policy_start);
+rw_attribute(force_write_through);
 
 rw_attribute(sequential_cutoff);
 rw_attribute(read_bypass);
@@ -120,7 +130,13 @@ rw_attribute(writeback_rate_update_seconds);
 rw_attribute(writeback_rate_i_term_inverse);
 rw_attribute(writeback_rate_p_term_inverse);
 rw_attribute(writeback_rate_minimum);
+rw_attribute(writeback_state);
+read_attribute(writeback_sector_size_per_sec);
+read_attribute(writeback_io_num_per_sec);
+read_attribute(front_io_num_per_sec);
 read_attribute(writeback_rate_debug);
+read_attribute(write_token_sector_size);
+read_attribute(write_token_io_num);
 
 read_attribute(stripe_size);
 read_attribute(partial_stripes_expensive);
@@ -177,6 +193,11 @@ SHOW(__bch_cached_dev)
 					       bch_cache_modes,
 					       BDEV_CACHE_MODE(&dc->sb));
 
+	if (attr == &sysfs_writeback_state)
+		return bch_snprint_string_list(buf, PAGE_SIZE,
+					       writeback_state,
+					       dc->writeback_state);
+
 	if (attr == &sysfs_readahead_cache_policy)
 		return bch_snprint_string_list(buf, PAGE_SIZE,
 					      bch_reada_cache_policies,
@@ -194,6 +215,9 @@ SHOW(__bch_cached_dev)
 	var_printf(writeback_metadata,	"%i");
 	var_printf(writeback_running,	"%i");
 	var_print(writeback_delay);
+	var_print(writeback_sector_size_per_sec);
+	var_print(writeback_io_num_per_sec);
+	var_print(front_io_num_per_sec);
 	var_print(writeback_percent);
 	sysfs_hprint(writeback_rate,
 		     wb ? atomic_long_read(&dc->writeback_rate.rate) << 9 : 0);
@@ -256,6 +280,8 @@ SHOW(__bch_cached_dev)
 
 	sysfs_print(running,		atomic_read(&dc->running));
 	sysfs_print(state,		states[BDEV_STATE(&dc->sb)]);
+	var_print(write_token_sector_size);
+	var_print(write_token_io_num);
 
 	if (attr == &sysfs_label) {
 		memcpy(buf, dc->sb.label, SB_LABEL_SIZE);
@@ -373,6 +399,15 @@ STORE(__cached_dev)
 			SET_BDEV_CACHE_MODE(&dc->sb, v);
 			bch_write_bdev_super(dc, NULL);
 		}
+	}
+
+	if (attr == &sysfs_writeback_state) {
+		v = __sysfs_match_string(writeback_state, -1, buf);
+
+		if (v < 0)
+			return v;
+
+		dc->writeback_state = v;
 	}
 
 	if (attr == &sysfs_readahead_cache_policy) {
@@ -498,11 +533,14 @@ static struct attribute *bch_cached_dev_files[] = {
 	&sysfs_data_csum,
 #endif
 	&sysfs_cache_mode,
+	&sysfs_writeback_state,
 	&sysfs_readahead_cache_policy,
 	&sysfs_stop_when_cache_set_failed,
 	&sysfs_writeback_metadata,
 	&sysfs_writeback_running,
 	&sysfs_writeback_delay,
+	&sysfs_writeback_sector_size_per_sec,
+	&sysfs_writeback_io_num_per_sec,
 	&sysfs_writeback_percent,
 	&sysfs_writeback_rate,
 	&sysfs_writeback_rate_update_seconds,
@@ -510,6 +548,9 @@ static struct attribute *bch_cached_dev_files[] = {
 	&sysfs_writeback_rate_p_term_inverse,
 	&sysfs_writeback_rate_minimum,
 	&sysfs_writeback_rate_debug,
+	&sysfs_write_token_sector_size,
+	&sysfs_write_token_io_num,
+	&sysfs_front_io_num_per_sec,
 	&sysfs_io_errors,
 	&sysfs_io_error_limit,
 	&sysfs_io_disable,
@@ -770,6 +811,12 @@ SHOW(__bch_cache_set)
 		    c->congested_read_threshold_us);
 	sysfs_print(congested_write_threshold_us,
 		    c->congested_write_threshold_us);
+	sysfs_print(gc_sectors,
+		    c->gc_sectors);
+	sysfs_print(traffic_policy_start,
+		    c->traffic_policy_start);
+	sysfs_print(force_write_through,
+		    c->force_write_through);
 
 	sysfs_print(cutoff_writeback, bch_cutoff_writeback);
 	sysfs_print(cutoff_writeback_sync, bch_cutoff_writeback_sync);
@@ -855,6 +902,12 @@ STORE(__bch_cache_set)
 	sysfs_strtoul_clamp(congested_write_threshold_us,
 			    c->congested_write_threshold_us,
 			    0, UINT_MAX);
+	sysfs_strtoul(gc_sectors,
+			    c->gc_sectors);
+	sysfs_strtoul(traffic_policy_start,
+			    c->traffic_policy_start);
+	sysfs_strtoul(force_write_through,
+			    c->force_write_through);
 
 	if (attr == &sysfs_errors) {
 		v = __sysfs_match_string(error_actions, -1, buf);
@@ -997,6 +1050,9 @@ static struct attribute *bch_cache_set_internal_files[] = {
 	&sysfs_idle_max_writeback_rate,
 	&sysfs_gc_after_writeback,
 	&sysfs_io_disable,
+	&sysfs_gc_sectors,
+	&sysfs_traffic_policy_start,
+	&sysfs_force_write_through,
 	&sysfs_cutoff_writeback,
 	&sysfs_cutoff_writeback_sync,
 	NULL
