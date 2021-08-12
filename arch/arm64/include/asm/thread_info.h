@@ -93,6 +93,10 @@ void arch_release_task_struct(struct task_struct *tsk);
 #define TIF_SVE_VL_INHERIT	24	/* Inherit sve_vl_onexec across exec */
 #define TIF_SSBD		25	/* Wants SSB mitigation */
 
+#ifdef CONFIG_UCE_KERNEL_RECOVERY
+#define TIF_UCE_KERNEL_RECOVERY 26
+#endif
+
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)
 #define _TIF_NOTIFY_RESUME	(1 << TIF_NOTIFY_RESUME)
@@ -109,6 +113,10 @@ void arch_release_task_struct(struct task_struct *tsk);
 #define _TIF_32BIT		(1 << TIF_32BIT)
 #define _TIF_SVE		(1 << TIF_SVE)
 #define _TIF_POLLING_NRFLAG	(1 << TIF_POLLING_NRFLAG)
+
+#ifdef CONFIG_UCE_KERNEL_RECOVERY
+#define _TIF_UCE_KERNEL_RECOVERY	(1 << TIF_UCE_KERNEL_RECOVERY)
+#endif
 
 #define _TIF_WORK_MASK		(_TIF_NEED_RESCHED | _TIF_SIGPENDING | \
 				 _TIF_NOTIFY_RESUME | _TIF_FOREIGN_FPSTATE | \
