@@ -968,6 +968,7 @@ late_initcall(init_machine_late);
  * The crash region must be aligned to 128MB to avoid
  * zImage relocating below the reserved region.
  */
+#undef CRASH_ALIGN
 #define CRASH_ALIGN	(128 << 20)
 
 static inline unsigned long long get_total_mem(void)
