@@ -1,5 +1,7 @@
 # raspberrypi-kernel
 
+English | [简体中文](./README.md)
+
 #### Description
 
 The 4.19.90 kernel for running on Raspberry Pi.
@@ -8,7 +10,7 @@ This repository is based on [openEuler 20.03 LTS](https://gitee.com/openeuler/ke
 
 #### Architecture Requirements
 
-Hardware: Raspberry Pi 3B/3B+/4B.
+Hardware: Raspberry Pi 3B/3B+/4B/400.
 
 Architecture: AArch64.
 
@@ -18,31 +20,33 @@ Compile kernel and kernel modules.
 
 1.  Prepare compile environment
 
-OS: openEuler or CentOS 7/8;
+    OS: openEuler or CentOS 7/8;
 
-Architecture: AArch64.
+    Architecture: AArch64.
 
-You follow the documents of [raspberrypi](https://gitee.com/openeuler/raspberrypi/blob/master/README.en.md) to cross-compile this kernel. 
+    You follow the documents of [raspberrypi](https://gitee.com/openeuler/raspberrypi/blob/master/README.en.md) to cross-compile this kernel.
 
 2.  Download source
 
-`git clone git@gitee.com:openeuler/raspberrypi-kernel.git`
+    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b openEuler-20.03-LTS && cd raspberrypi-kernel`
 
 3.  Load default settings
 
-`make openeuler-raspi_defconfig`
+    `make openeuler-raspi_defconfig`
+
+    The corresponding defconfig file is in ./arch/arm64/configs.
 
 4.  Compile kernel
 
-`make ARCH=arm64 -j4`
+    `make ARCH=arm64 -j4`
 
 5.  Create directory for compiling kernel modules
 
-`mkdir ../output`
+    `mkdir ../output`
 
 6.  Compile kernel modules
 
-`make INSTALL_MOD_PATH=../output/ modules_install`
+    `make INSTALL_MOD_PATH=../output/ modules_install`
 
 Now, the kernel compilation is complete.
 
