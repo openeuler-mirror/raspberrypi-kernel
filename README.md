@@ -1,5 +1,7 @@
 # raspberrypi-kernel
 
+[English](./README.en.md) | 简体中文
+
 #### 介绍
 
 适用于树莓派 的 4.19.90 版本的内核源码。
@@ -8,7 +10,7 @@
 
 #### 支持硬件
 
-树莓派 3B/3B+/4B
+树莓派 3B/3B+/4B/400
 
 架构：AArch64
 
@@ -18,31 +20,33 @@
 
 1.  准备编译环境
 
-操作系统：openEuler 或 CentOS 7/8
+    操作系统：openEuler 或 CentOS 7/8
 
-架构：AArch64
+    架构：AArch64
 
-交叉编译请参照：[交叉编译内核](https://gitee.com/openeuler/raspberrypi/blob/master/documents/交叉编译内核.md)
+    交叉编译请参照：[交叉编译内核](https://gitee.com/openeuler/raspberrypi/blob/master/documents/交叉编译内核.md)
 
 2.  下载源码
 
-`git clone git@gitee.com:openeuler/raspberrypi-kernel.git`
+    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b openEuler-20.03-LTS && cd raspberrypi-kernel`
 
 3.  载入默认设置
 
-`make openeuler-raspi_defconfig`
+    `make openeuler-raspi_defconfig`
+
+    对应的 defconfig 文件在 ./arch/arm64/configs 下。
 
 4.  编译内核
 
-`make ARCH=arm64 -j4`
+    `make ARCH=arm64 -j4`
 
 5.  创建编译内核模块目录
 
-`mkdir ../output`
+    `mkdir ../output`
 
 6.  编译内核模块
 
-`make INSTALL_MOD_PATH=../output/ modules_install`
+    `make INSTALL_MOD_PATH=../output/ modules_install`
 
 至此，内核编译完成。
 
