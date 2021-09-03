@@ -1094,8 +1094,12 @@ asmlinkage int __exception do_debug_exception(unsigned long addr_if_watchpoint,
 		rv = 0;
 	}
 
-	if (interrupts_enabled(regs))
+	if (interrupts_enabled(regs)) {
 		trace_hardirqs_on();
+#ifdef CONFIG_ITRACE_IRQSOFF
+		itrace_hardirqs_ignore();
+#endif
+	}
 
 	return rv;
 }

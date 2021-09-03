@@ -72,6 +72,9 @@ static inline void local_daif_restore(unsigned long flags)
 
 	if (!irq_disabled) {
 		trace_hardirqs_on();
+#ifdef CONFIG_ITRACE_IRQSOFF
+		itrace_hardirqs_ignore();
+#endif
 
 		if (system_uses_irq_prio_masking()) {
 			gic_write_pmr(GIC_PRIO_IRQON);

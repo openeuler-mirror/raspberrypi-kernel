@@ -719,6 +719,9 @@ alternative_else_nop_endif
 	bl	trace_hardirqs_on
 1:
 #endif
+#ifdef CONFIG_ITRACE_IRQSOFF
+	bl	itrace_hardirqs_ignore
+#endif
 
 	kernel_exit 1
 ENDPROC(el1_irq)
@@ -955,6 +958,9 @@ el0_irq_naked:
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_on
 #endif
+#ifdef CONFIG_ITRACE_IRQSOFF
+	bl	itrace_hardirqs_ignore
+#endif
 	b	ret_to_user
 ENDPROC(el0_irq)
 
@@ -989,6 +995,9 @@ work_pending:
 	bl	do_notify_resume
 #ifdef CONFIG_TRACE_IRQFLAGS
 	bl	trace_hardirqs_on		// enabled while in userspace
+#endif
+#ifdef CONFIG_ITRACE_IRQSOFF
+	bl	itrace_hardirqs_ignore
 #endif
 	ldr	x1, [tsk, #TSK_TI_FLAGS]	// re-check for single-step
 	b	finish_ret_to_user

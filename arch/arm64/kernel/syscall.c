@@ -131,6 +131,9 @@ static void el0_svc_common(struct pt_regs *regs, int scno, int sc_nr,
 			 * the SPSR.
 			 */
 			trace_hardirqs_on();
+#ifdef CONFIG_ITRACE_IRQSOFF
+			itrace_hardirqs_ignore();
+#endif
 			return;
 		}
 		local_daif_restore(DAIF_PROCCTX);
