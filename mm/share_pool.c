@@ -3208,6 +3208,7 @@ struct page *sp_alloc_pages(struct vm_struct *area, gfp_t mask,
 		noreclaim_flag = memalloc_noreclaim_save();
 		page = hugetlb_alloc_hugepage(NUMA_NO_NODE, HUGETLB_ALLOC_NONE);
 		memalloc_noreclaim_restore(noreclaim_flag);
+		sp_try_to_compact();
 		return page;
 	} else
 		return alloc_pages_node(node, mask, page_order);
