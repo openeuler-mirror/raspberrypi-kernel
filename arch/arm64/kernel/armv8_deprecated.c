@@ -57,6 +57,57 @@ struct insn_emulation {
 	 */
 	struct ctl_table sysctl[2];
 };
+static void __init register_insn_emulation(struct insn_emulation_ops *ops)
+{
+	unsigned long flags;
+	struct insn_emulation *insn;
+
+	insn = kzalloc(sizeof(*insn), GFP_KERNEL);
+	if (!insn)
+		return;
+
+	insn->ops = ops;
+	insn->min = INSN_UNDEF;
+
+	switch (ops->status) {
+	case INSN_DEPRECATED:
+#if 0
+		insn->current_mode = INSN_EMULATE;
+		/* Disable the HW mode if it was turned on at early boot time */
+		run_all_cpu_set_hw_mode(insn, false);
+#else
+		insn->current_mode = INSN_HW;
+		run_all_cpu_set_hw_mode(insn, true);
+		insn->max = INSN_HW;
+#endif
+		break;
+	case INSN_OBSOLETE:
+		insn->current_mode = INSN_UNDEF;
+		insn->max = INSN_EMULATE;
+		break;
+	}
+
+	raw_spin_lock_irqsave(&insn_emulation_lock, flags);
+	list_add(&insn->node, &insn_emulation);
+	nr_insn_emulated++;
+	raw_spin_unlock_irqrestore(&insn_emulation_lock, flags);
+
+	/* Register any handlers if required */
+	update_insn_emulation_mode(insn, INSN_UNDEF);
+}
+
+static int emulation_proc_handler(struct ctl_table *table, int write,
+				  void *buffer, size_t *lenp,
+				  loff_t *ppos)
+{
+	int ret = 0;
+	struct insn_emulation *insn;
+	enum insn_emulation_mode prev_mode;
+
+	mutex_lock(&insn_emulation_mutex);
+	insn = container_of(table->data, struct insn_emulation, current_mode);
+	prev_mode = insn->current_mode;
+	ret = proc_dointvec_minmax(table, write, buffer, lenp, ppos);
 
 #define ARM_OPCODE_CONDTEST_FAIL   0
 #define ARM_OPCODE_CONDTEST_PASS   1
