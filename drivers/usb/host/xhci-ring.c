@@ -666,6 +666,16 @@ void xhci_find_new_dequeue_state(struct xhci_hcd *xhci,
 
 	} while (!cycle_found || !td_last_trb_found);
 
+	/*
+	 * Quirk: the xHC does not correctly parse link TRBs if the HW Dequeue
+	 * pointer is set to one. Advance to the next TRB (and next segment).
+	 */
+	if (xhci->quirks & XHCI_AVOID_DQ_ON_LINK && trb_is_link(new_deq)) {
+		if (link_trb_toggles_cycle(new_deq))
+			state->new_cycle_state ^= 0x1;
+		next_trb(xhci, ep_ring, &new_seg, &new_deq);
+	}
+
 	state->new_deq_seg = new_seg;
 	state->new_deq_ptr = new_deq;
 
@@ -4258,9 +4268,9 @@ void xhci_queue_new_dequeue_state(struct xhci_hcd *xhci,
 	}
 	ep = &xhci->devs[slot_id]->eps[ep_index];
 	if ((ep->ep_state & SET_DEQ_PENDING)) {
-		xhci_warn(xhci, "WARN Cannot submit Set TR Deq Ptr\n");
-		xhci_warn(xhci, "A Set TR Deq Ptr command is pending.\n");
-		return;
+		xhci_warn(xhci, "WARN A Set TR Deq Ptr command is pending for slot %u ep %u\n",
+			  slot_id, ep_index);
+		ep->ep_state &= ~SET_DEQ_PENDING;
 	}
 
 	/* This function gets called from contexts where it cannot sleep */
