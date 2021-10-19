@@ -6,7 +6,7 @@ English | [简体中文](./README.md)
 
 The 5.10 kernel for running on Raspberry Pi.
 
-This repository is based on [openEuler 21.09](https://gitee.com/openeuler/kernel/tree/openEuler-21.09/) version kernel, and is merged with the 5.10.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-5.10.y).
+This repository is based on [openEuler OLK-5.10](https://gitee.com/openeuler/kernel/tree/OLK-5.10/) version kernel, and is merged with the 5.10.y branch of [Raspberry Pi kernel](https://github.com/raspberrypi/linux/tree/rpi-5.10.y).
 
 #### Architecture Requirements
 
@@ -28,7 +28,7 @@ Compile kernel and kernel modules.
 
 2.  Download source
 
-    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b openEuler-21.09 && cd raspberrypi-kernel`
+    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b OLK-5.10 && cd raspberrypi-kernel`
 
 3.  Load default settings
 
