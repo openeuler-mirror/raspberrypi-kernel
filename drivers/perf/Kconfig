@@ -141,6 +141,14 @@ config ARM64_BRBE
 	  relevant information such as cycle count, misprediction and branch
 	  type, branch privilege level etc.
 
+config RPI_AXIPERF
+        depends on ARCH_BCM2835
+        tristate "RaspberryPi AXI Performance monitors"
+        default n
+        help
+          Say y if you want to use Raspberry Pi AXI performance monitors, m if
+          you want to build it as a module.
+
 source "drivers/perf/hisilicon/Kconfig"
 
 endmenu

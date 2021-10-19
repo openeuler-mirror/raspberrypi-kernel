@@ -1660,8 +1660,8 @@ struct urb_priv {
  * Each segment table entry is 4*32bits long.  1K seems like an ok size:
  * (1K bytes * 8bytes/bit) / (4*32 bits) = 64 segment entries in the table,
  * meaning 64 ring segments.
- * Initial allocated size of the ERST, in number of entries */
-#define	ERST_NUM_SEGS	1
+ * Maximum number of segments in the ERST */
+#define	ERST_MAX_SEGS	8
 /* Initial allocated size of the ERST, in number of entries */
 #define	ERST_SIZE	64
 /* Initial number of event segment rings allocated */
@@ -1898,6 +1898,7 @@ struct xhci_hcd {
 #define XHCI_EP_CTX_BROKEN_DCS	BIT_ULL(43)
 #define XHCI_SUSPEND_RESUME_CLKS	BIT_ULL(44)
 #define XHCI_RESET_TO_DEFAULT	BIT_ULL(45)
+#define XHCI_AVOID_DQ_ON_LINK	BIT_ULL(46)
 
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
