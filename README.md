@@ -6,7 +6,7 @@
 
 适用于树莓派 的 5.10 版本的内核源码。
 
-本仓库基于 [openEuler 21.09](https://gitee.com/openeuler/kernel/tree/openEuler-21.09/) 版本的内核，合并了上游 [树莓派内核 5.10.y](https://github.com/raspberrypi/linux/tree/rpi-5.10.y) 的分支代码。
+本仓库基于 [openEuler OLK-5.10](https://gitee.com/openeuler/kernel/tree/OLK-5.10/) 版本的内核，合并了上游 [树莓派内核 5.10.y](https://github.com/raspberrypi/linux/tree/rpi-5.10.y) 的分支代码。
 
 #### 支持硬件
 
@@ -28,7 +28,7 @@
 
 2.  下载源码
 
-    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b openEuler-21.09 && cd raspberrypi-kernel`
+    `git clone git@gitee.com:openeuler/raspberrypi-kernel.git -b OLK-5.10 && cd raspberrypi-kernel`
 
 3.  载入默认设置
 
