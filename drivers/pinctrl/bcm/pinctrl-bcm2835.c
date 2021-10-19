@@ -378,7 +378,7 @@ static const struct gpio_chip bcm2835_gpio_chip = {
 	.get = bcm2835_gpio_get,
 	.set = bcm2835_gpio_set,
 	.set_config = gpiochip_generic_config,
-	.base = -1,
+	.base = 0,
 	.ngpio = BCM2835_NUM_GPIOS,
 	.can_sleep = false,
 	.of_gpio_ranges_fallback = bcm2835_of_gpio_ranges_fallback,
@@ -395,7 +395,7 @@ static const struct gpio_chip bcm2711_gpio_chip = {
 	.get = bcm2835_gpio_get,
 	.set = bcm2835_gpio_set,
 	.set_config = gpiochip_generic_config,
-	.base = -1,
+	.base = 0,
 	.ngpio = BCM2711_NUM_GPIOS,
 	.can_sleep = false,
 	.of_gpio_ranges_fallback = bcm2835_of_gpio_ranges_fallback,
@@ -1308,9 +1308,13 @@ static int bcm2835_pinctrl_probe(struct platform_device *pdev)
 		char *name;
 
 		girq->parents[i] = irq_of_parse_and_map(np, i);
-		if (!is_7211)
+		if (!is_7211) {
+			if (!girq->parents[i]) {
+				girq->num_parents = i;
+				break;
+			}
 			continue;
-
+		}
 		/* Skip over the all banks interrupts */
 		pc->wake_irq[i] = irq_of_parse_and_map(np, i +
 						       BCM2835_NUM_IRQS + 1);
@@ -1336,7 +1340,7 @@ static int bcm2835_pinctrl_probe(struct platform_device *pdev)
 	girq->default_type = IRQ_TYPE_NONE;
 	girq->handler = handle_level_irq;
 
-	err = gpiochip_add_data(&pc->gpio_chip, pc);
+	err = devm_gpiochip_add_data(dev, &pc->gpio_chip, pc);
 	if (err) {
 		dev_err(dev, "could not add GPIO chip\n");
 		goto out_remove;
