@@ -310,7 +310,16 @@ __v7_b15mp_setup:
 __v7_ca17mp_setup:
 	do_invalidate_l1
 	mov	r10, #0
+1:	adr	r0, __v7_setup_stack_ptr
+	ldr	r12, [r0]
+	add	r12, r12, r0			@ the local stack
 1:
+	stmia	r12, {r1-r6, lr}		@ v7_invalidate_l1 touches r0-r6
+	ldr	r0, [r12, #(6 * 4)]		@ read back the return address
+	teq	r0, lr				@ confirm it is correct
+	bne	1b				@ retrying if not
+	bl      v7_invalidate_l1
+	ldmia	r12, {r1-r6, lr}
 #ifdef CONFIG_SMP
 	orr	r10, r10, #(1 << 6)		@ Enable SMP/nAMP mode
 	ALT_SMP(mrc	p15, 0, r0, c1, c0, 1)
@@ -491,7 +500,16 @@ __v7_pj4b_setup:
 #endif /* CONFIG_CPU_PJ4B */
 
 __v7_setup:
-	do_invalidate_l1
+	adr	r0, __v7_setup_stack_ptr
+	ldr	r12, [r0]
+	add	r12, r12, r0			@ the local stack
+1:
+	stmia	r12, {r1-r6, lr}		@ v7_invalidate_l1 touches r0-r6
+	ldr	r0, [r12, #(6 * 4)]		@ read back the return address
+	teq	r0, lr				@ confirm it is correct
+	bne	1b				@ retrying if not
+	bl      v7_invalidate_l1
+	ldmia	r12, {r1-r6, lr}
 
 __v7_setup_cont:
 	and	r0, r9, #0xff000000		@ ARM?
