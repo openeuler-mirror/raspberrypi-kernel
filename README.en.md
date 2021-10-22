@@ -72,7 +72,7 @@ Now, the kernel compilation is complete.
 
 #### Installation
 
-Refer to [raspberrypi Repository](https://gitee.com/openeuler/raspberrypi) for details about how to use this compiled kernel to build openEuler image for Rasberry Pi.
+Refer to [raspberrypi Repository](https://gitee.com/openeuler/raspberrypi) for details about how to use this compiled kernel to build openEuler image for Raspberry Pi.
 
 #### Contributions
 
