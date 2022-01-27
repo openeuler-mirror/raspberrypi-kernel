@@ -181,12 +181,14 @@
 &hdmi0 {
 	clocks = <&firmware_clocks 13>, <&firmware_clocks 14>, <&dvp 0>, <&clk_27MHz>;
 	clock-names = "hdmi", "bvb", "audio", "cec";
+	wifi-2.4ghz-coexistence;
 	status = "okay";
 };
 
 &hdmi1 {
 	clocks = <&firmware_clocks 13>, <&firmware_clocks 14>, <&dvp 1>, <&clk_27MHz>;
 	clock-names = "hdmi", "bvb", "audio", "cec";
+	wifi-2.4ghz-coexistence;
 	status = "okay";
 };
 
@@ -337,7 +339,6 @@
 #include "bcm2711-rpi.dtsi"
 #include "bcm283x-rpi-csi1-2lane.dtsi"
 #include "bcm283x-rpi-i2c0mux_0_44.dtsi"
-#include "bcm283x-rpi-cam1-regulator.dtsi"
 
 / {
 	chosen {
@@ -604,6 +605,9 @@
 
 &cam1_reg {
 	gpio = <&expgpio 5 GPIO_ACTIVE_HIGH>;
+};
+
+cam0_reg: &cam_dummy_reg {
 };
 
 / {
