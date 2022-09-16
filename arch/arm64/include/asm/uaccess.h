@@ -85,11 +85,6 @@ static inline unsigned long __range_ok(const void __user *addr, unsigned long si
 #define _ASM_MC_EXTABLE(from, to)
 #endif
 
-#define _ASM_KACCESS_EXTABLE(from, to)	_ASM_EXTABLE(from, to)
-#define _ASM_UACCESS_EXTABLE(from, to)		\
-		_ASM_EXTABLE(from, to)		\
-		_ASM_MC_EXTABLE(from, to)
-
 /*
  * User access enabling/disabling.
  */
@@ -220,7 +215,7 @@ static inline void __user *__uaccess_mask_ptr(const void __user *ptr)
  * The "__xxx_error" versions set the third argument to -EFAULT if an error
  * occurs, and leave it unchanged on success.
  */
-#define __get_mem_asm(load, reg, x, addr, err, type)			\
+#define __get_mem_asm(load, reg, x, addr, err)				\
 	asm volatile(							\
 	"1:	" load "	" reg "1, [%2]\n"			\
 	"2:\n"								\
@@ -230,25 +225,25 @@ static inline void __user *__uaccess_mask_ptr(const void __user *ptr)
 	"	mov	%1, #0\n"					\
 	"	b	2b\n"						\
 	"	.previous\n"						\
-	_ASM_##type##ACCESS_EXTABLE(1b, 3b)				\
+	_ASM_EXTABLE(1b, 3b)						\
 	: "+r" (err), "=&r" (x)						\
 	: "r" (addr), "i" (-EFAULT))
 
-#define __raw_get_mem(ldr, x, ptr, err, type)				\
+#define __raw_get_mem(ldr, x, ptr, err)					\
 do {									\
 	unsigned long __gu_val;						\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__get_mem_asm(ldr "b", "%w", __gu_val, (ptr), (err), type);	\
+		__get_mem_asm(ldr "b", "%w", __gu_val, (ptr), (err));	\
 		break;							\
 	case 2:								\
-		__get_mem_asm(ldr "h", "%w", __gu_val, (ptr), (err), type);	\
+		__get_mem_asm(ldr "h", "%w", __gu_val, (ptr), (err));	\
 		break;							\
 	case 4:								\
-		__get_mem_asm(ldr, "%w", __gu_val, (ptr), (err), type);	\
+		__get_mem_asm(ldr, "%w", __gu_val, (ptr), (err));	\
 		break;							\
 	case 8:								\
-		__get_mem_asm(ldr, "%x",  __gu_val, (ptr), (err), type);	\
+		__get_mem_asm(ldr, "%x",  __gu_val, (ptr), (err));	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
@@ -260,7 +255,7 @@ do {									\
 do {									\
 	__chk_user_ptr(ptr);						\
 	uaccess_ttbr0_enable();						\
-	__raw_get_mem("ldtr", x, ptr, err, U);				\
+	__raw_get_mem("ldtr", x, ptr, err);				\
 	uaccess_ttbr0_disable();					\
 } while (0)
 
@@ -290,12 +285,12 @@ do {									\
 	int __gkn_err = 0;						\
 									\
 	__raw_get_mem("ldr", *((type *)(dst)),				\
-		      (__force type *)(src), __gkn_err, K);		\
+		      (__force type *)(src), __gkn_err);		\
 	if (unlikely(__gkn_err))					\
 		goto err_label;						\
 } while (0)
 
-#define __put_mem_asm(store, reg, x, addr, err, type)			\
+#define __put_mem_asm(store, reg, x, addr, err)				\
 	asm volatile(							\
 	"1:	" store "	" reg "1, [%2]\n"			\
 	"2:\n"								\
@@ -304,25 +299,25 @@ do {									\
 	"3:	mov	%w0, %3\n"					\
 	"	b	2b\n"						\
 	"	.previous\n"						\
-	_ASM_##type##ACCESS_EXTABLE(1b, 3b)				\
+	_ASM_EXTABLE(1b, 3b)						\
 	: "+r" (err)							\
 	: "r" (x), "r" (addr), "i" (-EFAULT))
 
-#define __raw_put_mem(str, x, ptr, err, type)				\
+#define __raw_put_mem(str, x, ptr, err)					\
 do {									\
 	__typeof__(*(ptr)) __pu_val = (x);				\
 	switch (sizeof(*(ptr))) {					\
 	case 1:								\
-		__put_mem_asm(str "b", "%w", __pu_val, (ptr), (err), type);	\
+		__put_mem_asm(str "b", "%w", __pu_val, (ptr), (err));	\
 		break;							\
 	case 2:								\
-		__put_mem_asm(str "h", "%w", __pu_val, (ptr), (err), type);	\
+		__put_mem_asm(str "h", "%w", __pu_val, (ptr), (err));	\
 		break;							\
 	case 4:								\
-		__put_mem_asm(str, "%w", __pu_val, (ptr), (err), type);	\
+		__put_mem_asm(str, "%w", __pu_val, (ptr), (err));	\
 		break;							\
 	case 8:								\
-		__put_mem_asm(str, "%x", __pu_val, (ptr), (err), type);	\
+		__put_mem_asm(str, "%x", __pu_val, (ptr), (err));	\
 		break;							\
 	default:							\
 		BUILD_BUG();						\
@@ -333,7 +328,7 @@ do {									\
 do {									\
 	__chk_user_ptr(ptr);						\
 	uaccess_ttbr0_enable();						\
-	__raw_put_mem("sttr", x, ptr, err, U);				\
+	__raw_put_mem("sttr", x, ptr, err);				\
 	uaccess_ttbr0_disable();					\
 } while (0)
 
@@ -363,7 +358,7 @@ do {									\
 	int __pkn_err = 0;						\
 									\
 	__raw_put_mem("str", *((type *)(src)),				\
-		      (__force type *)(dst), __pkn_err, K);		\
+		      (__force type *)(dst), __pkn_err);		\
 	if (unlikely(__pkn_err))					\
 		goto err_label;						\
 } while(0)
