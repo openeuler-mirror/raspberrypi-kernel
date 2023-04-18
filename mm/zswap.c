@@ -1494,6 +1494,7 @@ static int zswap_setup(void)
 	frontswap_register_ops(&zswap_frontswap_ops);
 	if (zswap_debugfs_init())
 		pr_warn("debugfs initialization failed\n");
+	zswap_init_state = ZSWAP_INIT_SUCCEED;
 
 	if (zswap_enabled)
 		zswap_try_pool_create();
