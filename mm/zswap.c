@@ -886,13 +886,13 @@ static int zswap_enabled_param_set(const char *val,
 {
 	int ret;
 
-	if (zswap_init_failed) {
+	if (zswap_init_state == ZSWAP_INIT_FAILED) {
 		pr_err("can't enable, initialization failed\n");
 		return -ENODEV;
 	}
 
 	ret = param_set_bool(val, kp);
-	if (!ret && zswap_enabled && zswap_init_started && !zswap_has_pool)
+	if (!ret && zswap_enabled && zswap_init_state == ZSWAP_INIT_SUCCEED && !zswap_has_pool)
 		if (!zswap_try_pool_create())
 			ret = -ENODEV;
 
