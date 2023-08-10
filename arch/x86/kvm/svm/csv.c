@@ -13,7 +13,9 @@
 #include <linux/psp-hygon.h>
 #include <linux/memory.h>
 #include <linux/kvm_types.h>
+#include <linux/rbtree.h>
 #include <asm/cacheflush.h>
+#include <asm/e820/api.h>
 #include <asm/csv.h>
 #include "kvm_cache_regs.h"
 #include "svm.h"
@@ -806,10 +808,48 @@ struct encrypt_data_block {
 	} entry[512];
 };
 
+union csv3_page_attr {
+	struct {
+		u64 reserved:	1;
+		u64 rw:		1;
+		u64 reserved1:	49;
+		u64 mmio:	1;
+		u64 reserved2:	12;
+	};
+	u64 val;
+};
+
+enum csv3_pg_level {
+	CSV3_PG_LEVEL_NONE,
+	CSV3_PG_LEVEL_4K,
+	CSV3_PG_LEVEL_2M,
+	CSV3_PG_LEVEL_NUM
+};
+
+/*
+ * Manage shared page in rbtree, the node within the rbtree
+ * is indexed by gfn. @page points to the page mapped by @gfn
+ * in NPT.
+ */
+struct shared_page {
+	struct rb_node node;
+	gfn_t gfn;
+	struct page *page;
+};
+
+struct shared_page_mgr {
+	struct rb_root root;
+	u64 count;
+};
+
 struct kvm_csv_info {
 	struct kvm_sev_info *sev;
 
 	bool csv3_active;	/* CSV3 enabled guest */
+
+	struct kmem_cache *sp_slab;	/* shared page slab */
+	struct shared_page_mgr sp_mgr;	/* shared page manager */
+	struct mutex sp_lock;		/* shared page lock */
 
 	struct list_head smr_list; /* List of guest secure memory regions */
 	unsigned long nodemask; /* Nodemask where CSV3 guest's memory resides */
@@ -826,9 +866,95 @@ struct secure_memory_region {
 	u64 hpa;
 };
 
+static bool shared_page_insert(struct shared_page_mgr *mgr,
+			       struct shared_page *sp)
+{
+	struct shared_page *sp_iter;
+	struct rb_root *root;
+	struct rb_node **new;
+	struct rb_node *parent = NULL;
+
+	root = &mgr->root;
+	new = &(root->rb_node);
+
+	/* Figure out where to put new node */
+	while (*new) {
+		sp_iter = rb_entry(*new, struct shared_page, node);
+		parent = *new;
+
+		if (sp->gfn < sp_iter->gfn)
+			new = &((*new)->rb_left);
+		else if (sp->gfn > sp_iter->gfn)
+			new = &((*new)->rb_right);
+		else
+			return false;
+	}
+
+	/* Add new node and rebalance tree. */
+	rb_link_node(&sp->node, parent, new);
+	rb_insert_color(&sp->node, root);
+	mgr->count++;
+
+	return true;
+}
+
+static struct shared_page *shared_page_search(struct shared_page_mgr *mgr,
+					      gfn_t gfn)
+{
+	struct shared_page *sp;
+	struct rb_root *root;
+	struct rb_node *node;
+
+	root = &mgr->root;
+	node = root->rb_node;
+	while (node) {
+		sp = rb_entry(node, struct shared_page, node);
+		if (gfn < sp->gfn)
+			node = node->rb_left;
+		else if (gfn > sp->gfn)
+			node = node->rb_right;
+		else
+			return sp;
+	}
+
+	return NULL;
+}
+
+static struct shared_page *shared_page_remove(struct shared_page_mgr *mgr,
+					      gfn_t gfn)
+{
+	struct shared_page *sp;
+
+	sp = shared_page_search(mgr, gfn);
+	if (sp) {
+		rb_erase(&sp->node, &mgr->root);
+		mgr->count--;
+	}
+
+	return sp;
+}
+
 static inline struct kvm_svm_csv *to_kvm_svm_csv(struct kvm *kvm)
 {
 	return (struct kvm_svm_csv *)container_of(kvm, struct kvm_svm, kvm);
+}
+
+static int to_csv3_pg_level(int level)
+{
+	int ret;
+
+	switch (level) {
+	case PG_LEVEL_4K:
+		ret = CSV3_PG_LEVEL_4K;
+		break;
+	case PG_LEVEL_2M:
+		ret = CSV3_PG_LEVEL_2M;
+		break;
+	default:
+		ret = CSV3_PG_LEVEL_NONE;
+	}
+
+	return ret;
 }
 
 static bool csv3_guest(struct kvm *kvm)
@@ -838,11 +964,23 @@ static bool csv3_guest(struct kvm *kvm)
 	return sev_es_guest(kvm) && csv->csv3_active;
 }
 
+static inline void csv3_init_update_npt(struct csv3_data_update_npt *update_npt,
+					gpa_t gpa, u32 error, u32 handle)
+{
+	memset(update_npt, 0x00, sizeof(*update_npt));
+
+	update_npt->gpa = gpa & PAGE_MASK;
+	update_npt->error_code = error;
+	update_npt->handle = handle;
+}
+
 static int csv3_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
 	struct kvm_csv_info *csv = &to_kvm_svm_csv(kvm)->csv_info;
 	struct kvm_csv3_init_data params;
+	struct kmem_cache *sp_slab;
+	char   slab_name[0x40];
 
 	if (unlikely(csv->csv3_active))
 		return -EINVAL;
@@ -854,11 +992,31 @@ static int csv3_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 			   sizeof(params)))
 		return -EFAULT;
 
+	memset(slab_name, 0, sizeof(slab_name));
+	snprintf(slab_name, sizeof(slab_name), "csv3_%d_sp_slab", sev->asid);
+	sp_slab = kmem_cache_create(slab_name, sizeof(struct shared_page),
+				    0, 0, NULL);
+	if (!sp_slab)
+		return -ENOMEM;
+
+	csv->sp_slab = sp_slab;
+	csv->sp_mgr.root = RB_ROOT;
+
 	csv->csv3_active = true;
 	csv->sev = sev;
 	csv->nodemask = (unsigned long)params.nodemask;
 
+	INIT_LIST_HEAD(&csv->smr_list);
+	mutex_init(&csv->sp_lock);
+
 	return 0;
+}
+
+static bool csv3_is_mmio_pfn(kvm_pfn_t pfn)
+{
+	return !e820__mapped_raw_any(pfn_to_hpa(pfn),
+				     pfn_to_hpa(pfn + 1) - 1,
+				     E820_TYPE_RAM);
 }
 
 static int csv3_set_guest_private_memory(struct kvm *kvm)
@@ -1168,6 +1326,405 @@ e_free:
 	kfree(encrypt_vmcb);
 exit:
 	return ret;
+}
+
+static void csv3_mark_page_dirty(struct kvm_vcpu *vcpu, gva_t gpa,
+				 unsigned long npages)
+{
+	gfn_t gfn;
+	gfn_t gfn_end;
+
+	gfn = gpa >> PAGE_SHIFT;
+	gfn_end = gfn + npages;
+#ifdef KVM_HAVE_MMU_RWLOCK
+	write_lock(&vcpu->kvm->mmu_lock);
+#else
+	spin_lock(&vcpu->kvm->mmu_lock);
+#endif
+	for (; gfn < gfn_end; gfn++)
+		kvm_vcpu_mark_page_dirty(vcpu, gfn);
+#ifdef KVM_HAVE_MMU_RWLOCK
+	write_unlock(&vcpu->kvm->mmu_lock);
+#else
+	spin_unlock(&vcpu->kvm->mmu_lock);
+#endif
+}
+
+static int csv3_mmio_page_fault(struct kvm_vcpu *vcpu, gva_t gpa, u32 error_code)
+{
+	int r = 0;
+	struct kvm_svm *kvm_svm = to_kvm_svm(vcpu->kvm);
+	union csv3_page_attr page_attr = {.mmio = 1};
+	union csv3_page_attr page_attr_mask = {.mmio = 1};
+	struct csv3_data_update_npt *update_npt;
+	int psp_ret;
+
+	if (!hygon_kvm_hooks.sev_hooks_installed)
+		return -EFAULT;
+
+	update_npt = kzalloc(sizeof(*update_npt), GFP_KERNEL);
+	if (!update_npt) {
+		r = -ENOMEM;
+		goto exit;
+	}
+
+	csv3_init_update_npt(update_npt, gpa, error_code,
+			     kvm_svm->sev_info.handle);
+	update_npt->page_attr = page_attr.val;
+	update_npt->page_attr_mask = page_attr_mask.val;
+	update_npt->level = CSV3_PG_LEVEL_4K;
+
+	r = hygon_kvm_hooks.sev_issue_cmd(vcpu->kvm, CSV3_CMD_UPDATE_NPT,
+					  update_npt, &psp_ret);
+
+	if (psp_ret != SEV_RET_SUCCESS)
+		r = -EFAULT;
+
+	kfree(update_npt);
+exit:
+	return r;
+}
+
+static int __csv3_page_fault(struct kvm_vcpu *vcpu, gva_t gpa,
+			     u32 error_code, struct kvm_memory_slot *slot,
+			     int *psp_ret_ptr, kvm_pfn_t pfn, u32 level)
+{
+	int r = 0;
+	struct csv3_data_update_npt *update_npt;
+	struct kvm_svm *kvm_svm = to_kvm_svm(vcpu->kvm);
+	int psp_ret = 0;
+
+	if (!hygon_kvm_hooks.sev_hooks_installed)
+		return -EFAULT;
+
+	update_npt = kzalloc(sizeof(*update_npt), GFP_KERNEL);
+	if (!update_npt) {
+		r = -ENOMEM;
+		goto exit;
+	}
+
+	csv3_init_update_npt(update_npt, gpa, error_code,
+			     kvm_svm->sev_info.handle);
+
+	update_npt->spa = pfn << PAGE_SHIFT;
+	update_npt->level = level;
+
+	if (!csv3_is_mmio_pfn(pfn))
+		update_npt->spa |= sme_me_mask;
+
+	r = hygon_kvm_hooks.sev_issue_cmd(vcpu->kvm, CSV3_CMD_UPDATE_NPT,
+					  update_npt, &psp_ret);
+
+	kvm_make_request(KVM_REQ_TLB_FLUSH, vcpu);
+	kvm_flush_remote_tlbs(vcpu->kvm);
+
+	csv3_mark_page_dirty(vcpu, update_npt->gpa, update_npt->npages);
+
+	if (psp_ret_ptr)
+		*psp_ret_ptr = psp_ret;
+
+	kfree(update_npt);
+exit:
+	return r;
+}
+
+static int csv3_pin_shared_memory(struct kvm_vcpu *vcpu,
+				  struct kvm_memory_slot *slot, gfn_t gfn,
+				  kvm_pfn_t *pfn)
+{
+	struct page *page;
+	u64 hva;
+	int npinned;
+	kvm_pfn_t tmp_pfn;
+	struct kvm *kvm = vcpu->kvm;
+	struct kvm_csv_info *csv = &to_kvm_svm_csv(kvm)->csv_info;
+	struct shared_page *sp;
+	bool write = !(slot->flags & KVM_MEM_READONLY);
+
+	tmp_pfn = __gfn_to_pfn_memslot(slot, gfn, false, false, NULL, write,
+				       NULL, NULL);
+	if (unlikely(is_error_pfn(tmp_pfn)))
+		return -ENOMEM;
+
+	if (csv3_is_mmio_pfn(tmp_pfn)) {
+		*pfn = tmp_pfn;
+		return 0;
+	}
+
+	if (page_maybe_dma_pinned(pfn_to_page(tmp_pfn))) {
+		kvm_release_pfn_clean(tmp_pfn);
+		*pfn = tmp_pfn;
+		return 0;
+	}
+
+	kvm_release_pfn_clean(tmp_pfn);
+
+	sp = shared_page_search(&csv->sp_mgr, gfn);
+	if (!sp) {
+		sp = kmem_cache_zalloc(csv->sp_slab, GFP_KERNEL);
+		if (!sp)
+			return -ENOMEM;
+
+		hva = __gfn_to_hva_memslot(slot, gfn);
+		npinned = pin_user_pages_fast(hva, 1, FOLL_WRITE | FOLL_LONGTERM,
+					      &page);
+		if (npinned != 1) {
+			kmem_cache_free(csv->sp_slab, sp);
+			return -ENOMEM;
+		}
+
+		sp->page = page;
+		sp->gfn = gfn;
+		shared_page_insert(&csv->sp_mgr, sp);
+	}
+
+	*pfn = page_to_pfn(sp->page);
+
+	return 0;
+}
+
+static int __pfn_mapping_level(struct kvm *kvm, gfn_t gfn,
+			       const struct kvm_memory_slot *slot)
+{
+	int level = PG_LEVEL_4K;
+	unsigned long hva;
+	unsigned long flags;
+	pgd_t pgd;
+	p4d_t p4d;
+	pud_t pud;
+	pmd_t pmd;
+
+	/*
+	 * Note, using the already-retrieved memslot and __gfn_to_hva_memslot()
+	 * is not solely for performance, it's also necessary to avoid the
+	 * "writable" check in __gfn_to_hva_many(), which will always fail on
+	 * read-only memslots due to gfn_to_hva() assuming writes.  Earlier
+	 * page fault steps have already verified the guest isn't writing a
+	 * read-only memslot.
+	 */
+	hva = __gfn_to_hva_memslot(slot, gfn);
+
+	/*
+	 * Disable IRQs to prevent concurrent tear down of host page tables,
+	 * e.g. if the primary MMU promotes a P*D to a huge page and then frees
+	 * the original page table.
+	 */
+	local_irq_save(flags);
+
+	/*
+	 * Read each entry once.  As above, a non-leaf entry can be promoted to
+	 * a huge page _during_ this walk.  Re-reading the entry could send the
+	 * walk into the weeks, e.g. p*d_large() returns false (sees the old
+	 * value) and then p*d_offset() walks into the target huge page instead
+	 * of the old page table (sees the new value).
+	 */
+	pgd = READ_ONCE(*pgd_offset(kvm->mm, hva));
+	if (pgd_none(pgd))
+		goto out;
+
+	p4d = READ_ONCE(*p4d_offset(&pgd, hva));
+	if (p4d_none(p4d) || !p4d_present(p4d))
+		goto out;
+
+	pud = READ_ONCE(*pud_offset(&p4d, hva));
+	if (pud_none(pud) || !pud_present(pud))
+		goto out;
+
+	if (pud_large(pud)) {
+		level = PG_LEVEL_1G;
+		goto out;
+	}
+
+	pmd = READ_ONCE(*pmd_offset(&pud, hva));
+	if (pmd_none(pmd) || !pmd_present(pmd))
+		goto out;
+
+	if (pmd_large(pmd))
+		level = PG_LEVEL_2M;
+
+out:
+	local_irq_restore(flags);
+	return level;
+}
+
+static int csv3_mapping_level(struct kvm_vcpu *vcpu, gfn_t gfn, kvm_pfn_t pfn,
+			      struct kvm_memory_slot *slot)
+{
+	int level;
+	int page_num;
+	gfn_t gfn_base;
+
+	if (csv3_is_mmio_pfn(pfn)) {
+		level = PG_LEVEL_4K;
+		goto end;
+	}
+
+	if (!PageCompound(pfn_to_page(pfn))) {
+		level = PG_LEVEL_4K;
+		goto end;
+	}
+
+	level = PG_LEVEL_2M;
+	page_num = KVM_PAGES_PER_HPAGE(level);
+	gfn_base = gfn & ~(page_num - 1);
+
+	/*
+	 * 2M aligned guest address in memslot.
+	 */
+	if ((gfn_base < slot->base_gfn) ||
+	    (gfn_base + page_num > slot->base_gfn + slot->npages)) {
+		level = PG_LEVEL_4K;
+		goto end;
+	}
+
+	/*
+	 * hva in memslot is 2M aligned.
+	 */
+	if (__gfn_to_hva_memslot(slot, gfn_base) & ~PMD_MASK) {
+		level = PG_LEVEL_4K;
+		goto end;
+	}
+
+	level = __pfn_mapping_level(vcpu->kvm, gfn, slot);
+
+	/*
+	 * Firmware supports 2M/4K level.
+	 */
+	level = level > PG_LEVEL_2M ? PG_LEVEL_2M : level;
+
+end:
+	return to_csv3_pg_level(level);
+}
+
+static int csv3_page_fault(struct kvm_vcpu *vcpu, struct kvm_memory_slot *slot,
+			   gfn_t gfn, u32 error_code)
+{
+	int ret = 0;
+	int psp_ret = 0;
+	int level;
+	kvm_pfn_t pfn = KVM_PFN_NOSLOT;
+	struct kvm_csv_info *csv = &to_kvm_svm_csv(vcpu->kvm)->csv_info;
+
+	if (error_code & PFERR_PRESENT_MASK)
+		level = CSV3_PG_LEVEL_4K;
+	else {
+		mutex_lock(&csv->sp_lock);
+		ret = csv3_pin_shared_memory(vcpu, slot, gfn, &pfn);
+		mutex_unlock(&csv->sp_lock);
+		if (ret)
+			goto exit;
+
+		level = csv3_mapping_level(vcpu, gfn, pfn, slot);
+	}
+
+	ret = __csv3_page_fault(vcpu, gfn << PAGE_SHIFT, error_code, slot,
+				&psp_ret, pfn, level);
+
+	if (psp_ret != SEV_RET_SUCCESS)
+		ret = -EFAULT;
+exit:
+	return ret;
+}
+
+static void csv_vm_destroy(struct kvm *kvm)
+{
+	struct kvm_csv_info *csv = &to_kvm_svm_csv(kvm)->csv_info;
+	struct kvm_vcpu *vcpu;
+
+	struct list_head *smr_head = &csv->smr_list;
+	struct list_head *pos, *q;
+	struct secure_memory_region *smr;
+	struct shared_page *sp;
+	struct rb_node *node;
+	unsigned long i = 0;
+
+	if (csv3_guest(kvm)) {
+		mutex_lock(&csv->sp_lock);
+		while ((node = rb_first(&csv->sp_mgr.root))) {
+			sp = rb_entry(node, struct shared_page, node);
+			rb_erase(&sp->node, &csv->sp_mgr.root);
+			unpin_user_page(sp->page);
+			kmem_cache_free(csv->sp_slab, sp);
+			csv->sp_mgr.count--;
+		}
+		mutex_unlock(&csv->sp_lock);
+
+		kmem_cache_destroy(csv->sp_slab);
+		csv->sp_slab = NULL;
+
+		kvm_for_each_vcpu(i, vcpu, kvm) {
+			struct vcpu_svm *svm = to_svm(vcpu);
+
+			svm->current_vmcb->pa = __sme_pa(svm->vmcb);
+		}
+	}
+
+	if (likely(csv_x86_ops.vm_destroy))
+		csv_x86_ops.vm_destroy(kvm);
+
+	if (!csv3_guest(kvm))
+		return;
+
+	/* free secure memory region */
+	if (!list_empty(smr_head)) {
+		list_for_each_safe(pos, q, smr_head) {
+			smr = list_entry(pos, struct secure_memory_region, list);
+			if (smr) {
+				csv_release_to_contiguous(smr->hpa, smr->npages << PAGE_SHIFT);
+				list_del(&smr->list);
+				kfree(smr);
+			}
+		}
+	}
+}
+
+static int csv3_handle_page_fault(struct kvm_vcpu *vcpu, gpa_t gpa,
+				  u32 error_code)
+{
+	gfn_t gfn = gpa_to_gfn(gpa);
+	struct kvm_memory_slot *slot = gfn_to_memslot(vcpu->kvm, gfn);
+	int ret;
+	int r = -EIO;
+
+	if (kvm_is_visible_memslot(slot))
+		ret = csv3_page_fault(vcpu, slot, gfn, error_code);
+	else
+		ret = csv3_mmio_page_fault(vcpu, gpa, error_code);
+
+	if (!ret)
+		r = 1;
+
+	return r;
+}
+
+static int csv_handle_exit(struct kvm_vcpu *vcpu, fastpath_t exit_fastpath)
+{
+	struct vcpu_svm *svm = to_svm(vcpu);
+	u32 exit_code = svm->vmcb->control.exit_code;
+	int ret = -EIO;
+
+	/*
+	 * NPF for csv3 is dedicated.
+	 */
+	if (csv3_guest(vcpu->kvm) && exit_code == SVM_EXIT_NPF) {
+		gpa_t gpa = __sme_clr(svm->vmcb->control.exit_info_2);
+		u64 error_code = svm->vmcb->control.exit_info_1;
+
+		ret = csv3_handle_page_fault(vcpu, gpa, error_code);
+	} else {
+		if (likely(csv_x86_ops.handle_exit))
+			ret = csv_x86_ops.handle_exit(vcpu, exit_fastpath);
+	}
+
+	return ret;
+}
+
+static void csv_guest_memory_reclaimed(struct kvm *kvm)
+{
+	if (!csv3_guest(kvm)) {
+		if (likely(csv_x86_ops.guest_memory_reclaimed))
+			csv_x86_ops.guest_memory_reclaimed(kvm);
+	}
 }
 
 static int csv_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
@@ -1539,6 +2096,11 @@ void __init csv_init(struct kvm_x86_ops *ops)
 	ops->control_pre_system_reset = csv_control_pre_system_reset;
 	ops->control_post_system_reset = csv_control_post_system_reset;
 
-	if (boot_cpu_has(X86_FEATURE_SEV_ES) && boot_cpu_has(X86_FEATURE_CSV3))
+	if (boot_cpu_has(X86_FEATURE_SEV_ES) && boot_cpu_has(X86_FEATURE_CSV3)) {
 		ops->vm_size = sizeof(struct kvm_svm_csv);
+
+		ops->vm_destroy = csv_vm_destroy;
+		ops->handle_exit = csv_handle_exit;
+		ops->guest_memory_reclaimed = csv_guest_memory_reclaimed;
+	}
 }
