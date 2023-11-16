@@ -2033,6 +2033,36 @@ static int csv3_pin_shared_memory(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
+/**
+ *  Return negative error code on fail,
+ *  or return the number of pages unpinned successfully
+ */
+static int csv3_unpin_shared_memory(struct kvm *kvm, gpa_t gpa, u32 num_pages)
+{
+	struct kvm_csv_info *csv;
+	struct shared_page *sp;
+	gfn_t gfn;
+	unsigned long i;
+	int unpin_cnt = 0;
+
+	csv = &to_kvm_svm_csv(kvm)->csv_info;
+	gfn = gpa_to_gfn(gpa);
+
+	mutex_lock(&csv->sp_lock);
+	for (i = 0; i < num_pages; i++, gfn++) {
+		sp = shared_page_remove(&csv->sp_mgr, gfn);
+		if (sp) {
+			unpin_user_page(sp->page);
+			kmem_cache_free(csv->sp_slab, sp);
+			csv->sp_mgr.count--;
+			unpin_cnt++;
+		}
+	}
+	mutex_unlock(&csv->sp_lock);
+
+	return unpin_cnt;
+}
+
 static int __pfn_mapping_level(struct kvm *kvm, gfn_t gfn,
 			       const struct kvm_memory_slot *slot)
 {
@@ -2277,6 +2307,29 @@ static void csv_guest_memory_reclaimed(struct kvm *kvm)
 	}
 }
 
+static int csv3_handle_memory(struct kvm *kvm, struct kvm_sev_cmd *argp)
+{
+	struct kvm_csv3_handle_memory params;
+	int r = -EINVAL;
+
+	if (!csv3_guest(kvm))
+		return -ENOTTY;
+
+	if (copy_from_user(&params, (void __user *)(uintptr_t)argp->data,
+			   sizeof(params)))
+		return -EFAULT;
+
+	switch (params.opcode) {
+	case KVM_CSV3_RELEASE_SHARED_MEMORY:
+		r = csv3_unpin_shared_memory(kvm, params.gpa, params.num_pages);
+		break;
+	default:
+		break;
+	}
+
+	return r;
+};
+
 static int csv_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
 {
 	struct kvm_sev_cmd sev_cmd;
@@ -2342,6 +2395,9 @@ static int csv_mem_enc_ioctl(struct kvm *kvm, void __user *argp)
 		break;
 	case KVM_CSV3_RECEIVE_ENCRYPT_CONTEXT:
 		r = csv3_receive_encrypt_context(kvm, &sev_cmd);
+		break;
+	case KVM_CSV3_HANDLE_MEMORY:
+		r = csv3_handle_memory(kvm, &sev_cmd);
 		break;
 	default:
 		/*
