@@ -302,6 +302,23 @@ struct drm_encoder *vc4_get_crtc_encoder(struct drm_crtc *crtc,
 	return NULL;
 }
 
+#define drm_for_each_connector_mask(connector, dev, connector_mask) \
+	list_for_each_entry((connector), &(dev)->mode_config.connector_list, head) \
+		for_each_if ((connector_mask) & drm_connector_mask(connector))
+
+struct drm_connector *vc4_get_crtc_connector(struct drm_crtc *crtc,
+					     struct drm_crtc_state *state)
+{
+	struct drm_connector *connector;
+
+	WARN_ON(hweight32(state->connector_mask) > 1);
+
+	drm_for_each_connector_mask(connector, crtc->dev, state->connector_mask)
+		return connector;
+
+	return NULL;
+}
+
 static void vc4_crtc_pixelvalve_reset(struct drm_crtc *crtc)
 {
 	struct vc4_crtc *vc4_crtc = to_vc4_crtc(crtc);
@@ -734,10 +751,16 @@ int vc4_crtc_atomic_check(struct drm_crtc *crtc,
 		if (conn_state->crtc != crtc)
 			continue;
 
-		vc4_state->margins.left = conn_state->tv.margins.left;
-		vc4_state->margins.right = conn_state->tv.margins.right;
-		vc4_state->margins.top = conn_state->tv.margins.top;
-		vc4_state->margins.bottom = conn_state->tv.margins.bottom;
+		if (memcmp(&vc4_state->margins, &conn_state->tv.margins,
+			   sizeof(vc4_state->margins))) {
+			memcpy(&vc4_state->margins, &conn_state->tv.margins,
+			       sizeof(vc4_state->margins));
+
+			/* Need to force the dlist entries for all planes to be
+			 * updated so that the dest rectangles are changed.
+			 */
+			crtc_state->zpos_changed = true;
+		}
 		break;
 	}
 
@@ -1073,14 +1096,8 @@ void vc4_crtc_destroy_state(struct drm_crtc *crtc,
 	struct vc4_dev *vc4 = to_vc4_dev(crtc->dev);
 	struct vc4_crtc_state *vc4_state = to_vc4_crtc_state(state);
 
-	if (drm_mm_node_allocated(&vc4_state->mm)) {
-		unsigned long flags;
-
-		spin_lock_irqsave(&vc4->hvs->mm_lock, flags);
-		drm_mm_remove_node(&vc4_state->mm);
-		spin_unlock_irqrestore(&vc4->hvs->mm_lock, flags);
-
-	}
+	vc4_hvs_mark_dlist_entry_stale(vc4->hvs, vc4_state->mm);
+	vc4_state->mm = NULL;
 
 	drm_atomic_helper_crtc_destroy_state(crtc, state);
 }
@@ -1339,19 +1356,36 @@ int __vc4_crtc_init(struct drm_device *drm,
 
 	if (!vc4->is_vc5) {
 		drm_mode_crtc_set_gamma_size(crtc, ARRAY_SIZE(vc4_crtc->lut_r));
-
 		drm_crtc_enable_color_mgmt(crtc, 0, false, crtc->gamma_size);
+	}
 
+
+	if (!vc4->is_vc5) {
 		/* We support CTM, but only for one CRTC at a time. It's therefore
 		 * implemented as private driver state in vc4_kms, not here.
 		 */
-		drm_crtc_enable_color_mgmt(crtc, 0, true, crtc->gamma_size);
-	}
+		drm_crtc_enable_color_mgmt(crtc, 0, true, 0);
 
-	for (i = 0; i < crtc->gamma_size; i++) {
-		vc4_crtc->lut_r[i] = i;
-		vc4_crtc->lut_g[i] = i;
-		vc4_crtc->lut_b[i] = i;
+		/* Initialize the VC4 gamma LUTs */
+		for (i = 0; i < crtc->gamma_size; i++) {
+			vc4_crtc->lut_r[i] = i;
+			vc4_crtc->lut_g[i] = i;
+			vc4_crtc->lut_b[i] = i;
+		}
+	} else {
+		/* Initialize the VC5 gamma PWL entries. Assume 12-bit pipeline,
+		 * evenly spread over full range.
+		 */
+		for (i = 0; i < SCALER5_DSPGAMMA_NUM_POINTS; i++) {
+			vc4_crtc->pwl_r[i] =
+				VC5_HVS_SET_GAMMA_ENTRY(i << 8, i << 12, 1 << 8);
+			vc4_crtc->pwl_g[i] =
+				VC5_HVS_SET_GAMMA_ENTRY(i << 8, i << 12, 1 << 8);
+			vc4_crtc->pwl_b[i] =
+				VC5_HVS_SET_GAMMA_ENTRY(i << 8, i << 12, 1 << 8);
+			vc4_crtc->pwl_a[i] =
+				VC5_HVS_SET_GAMMA_ENTRY(i << 8, i << 12, 1 << 8);
+		}
 	}
 
 	return 0;
