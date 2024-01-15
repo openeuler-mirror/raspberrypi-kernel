@@ -420,14 +420,31 @@ static void bcm2835_gpio_irq_handle_bank(struct bcm2835_pinctrl *pc,
 	unsigned long events;
 	unsigned offset;
 	unsigned gpio;
+	u32 levs, levs2;
 
 	events = bcm2835_gpio_rd(pc, GPEDS0 + bank * 4);
+	levs = bcm2835_gpio_rd(pc, GPLEV0 + bank * 4);
 	events &= mask;
 	events &= pc->enabled_irq_map[bank];
+	bcm2835_gpio_wr(pc, GPEDS0 + bank * 4, events);
+
+retry:
 	for_each_set_bit(offset, &events, 32) {
 		gpio = (32 * bank) + offset;
 		generic_handle_domain_irq(pc->gpio_chip.irq.domain,
 					  gpio);
+	}
+	events = bcm2835_gpio_rd(pc, GPEDS0 + bank * 4);
+	levs2 = bcm2835_gpio_rd(pc, GPLEV0 + bank * 4);
+
+	events |= levs2 & ~levs & bcm2835_gpio_rd(pc, GPREN0 + bank * 4);
+	events |= ~levs2 & levs & bcm2835_gpio_rd(pc, GPFEN0 + bank * 4);
+	events &= mask;
+	events &= pc->enabled_irq_map[bank];
+	if (events) {
+		bcm2835_gpio_wr(pc, GPEDS0 + bank * 4, events);
+		levs = levs2;
+		goto retry;
 	}
 }
 
@@ -668,11 +685,7 @@ static int bcm2835_gpio_irq_set_type(struct irq_data *data, unsigned int type)
 
 static void bcm2835_gpio_irq_ack(struct irq_data *data)
 {
-	struct gpio_chip *chip = irq_data_get_irq_chip_data(data);
-	struct bcm2835_pinctrl *pc = gpiochip_get_data(chip);
-	unsigned gpio = irqd_to_hwirq(data);
-
-	bcm2835_gpio_set_bit(pc, GPEDS0, gpio);
+	/* Nothing to do - the main interrupt handler includes the ACK */
 }
 
 static int bcm2835_gpio_irq_set_wake(struct irq_data *data, unsigned int on)
@@ -926,9 +939,12 @@ static int bcm2835_pmx_free(struct pinctrl_dev *pctldev,
 		unsigned offset)
 {
 	struct bcm2835_pinctrl *pc = pinctrl_dev_get_drvdata(pctldev);
+	enum bcm2835_fsel fsel = bcm2835_pinctrl_fsel_get(pc, offset);
 
-	/* disable by setting to GPIO_IN */
-	bcm2835_pinctrl_fsel_set(pc, offset, BCM2835_FSEL_GPIO_IN);
+	/* Return non-GPIOs to GPIO_IN */
+	if (fsel != BCM2835_FSEL_GPIO_IN && fsel != BCM2835_FSEL_GPIO_OUT)
+		bcm2835_pinctrl_fsel_set(pc, offset, BCM2835_FSEL_GPIO_IN);
+
 	return 0;
 }
 
@@ -970,10 +986,7 @@ static void bcm2835_pmx_gpio_disable_free(struct pinctrl_dev *pctldev,
 		struct pinctrl_gpio_range *range,
 		unsigned offset)
 {
-	struct bcm2835_pinctrl *pc = pinctrl_dev_get_drvdata(pctldev);
-
-	/* disable by setting to GPIO_IN */
-	bcm2835_pinctrl_fsel_set(pc, offset, BCM2835_FSEL_GPIO_IN);
+	(void)bcm2835_pmx_free(pctldev, offset);
 }
 
 static int bcm2835_pmx_gpio_set_direction(struct pinctrl_dev *pctldev,
@@ -1355,7 +1368,7 @@ static int bcm2835_pinctrl_probe(struct platform_device *pdev)
 	girq->default_type = IRQ_TYPE_NONE;
 	girq->handler = handle_level_irq;
 
-	err = gpiochip_add_data(&pc->gpio_chip, pc);
+	err = devm_gpiochip_add_data(dev, &pc->gpio_chip, pc);
 	if (err) {
 		dev_err(dev, "could not add GPIO chip\n");
 		goto out_remove;
