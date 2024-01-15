@@ -521,4 +521,11 @@ config  SMMU_BYPASS_DEV
 	  E.g:SMMU allow iMR3408/3416 Raid bypass at DMA default domain
 	  to support other devices Virtualization through.
 
+config BCM2712_IOMMU
+       tristate "BCM2712 IOMMU driver"
+       depends on ARM64 && ARCH_BCM
+       select IOMMU_API
+       help
+	 IOMMU driver for BCM2712
+
 endif # IOMMU_SUPPORT
