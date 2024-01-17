@@ -1,7 +1,4 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- *	linux/arch/sw_64/kernel/smp.c
- */
 
 #include <linux/errno.h>
 #include <linux/sched/mm.h>
@@ -45,7 +42,7 @@ enum ipi_message_type {
 int smp_num_cpus = 1;		/* Number that came online.  */
 EXPORT_SYMBOL(smp_num_cpus);
 
-struct rcid_infomation rcid_info = { 0 };
+struct rcid_information rcid_info = { 0 };
 
 #define send_sleep_interrupt(cpu)	send_ipi((cpu), II_SLEEP)
 #define send_wakeup_interrupt(cpu)	send_ipi((cpu), II_WAKE)
@@ -218,7 +215,7 @@ void __init setup_smp(void)
 	smp_rcb_init(INIT_SMP_RCB);
 }
 
-void rcid_infomation_init(int core_version)
+void rcid_information_init(int core_version)
 {
 	if (rcid_info.initialized)
 		return;
