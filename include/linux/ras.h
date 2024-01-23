@@ -29,6 +29,7 @@ void log_non_standard_event(const guid_t *sec_type,
 void log_arm_hw_error(struct cper_sec_proc_arm *err, const u8 sev);
 #else
 void log_arm_hw_error(struct cper_sec_proc_arm *err);
+
 #endif
 
 #else
@@ -58,5 +59,20 @@ log_arm_hw_error(struct cper_sec_proc_arm *err) { return; }
 #else
 #define GET_LOGICAL_INDEX(mpidr) -EINVAL
 #endif /* CONFIG_ARM || CONFIG_ARM64 */
+struct atl_err {
+	u64 addr;
+	u64 ipid;
+	u32 cpu;
+};
+
+#if IS_ENABLED(CONFIG_AMD_ATL)
+void amd_atl_register_decoder(unsigned long (*f)(struct atl_err *));
+void amd_atl_unregister_decoder(void);
+unsigned long amd_convert_umc_mca_addr_to_sys_addr(struct atl_err *err);
+#else
+static inline unsigned long
+amd_convert_umc_mca_addr_to_sys_addr(struct atl_err *err) { return -EINVAL; }
+#endif /* CONFIG_AMD_ATL */
+
 
 #endif /* __RAS_H__ */

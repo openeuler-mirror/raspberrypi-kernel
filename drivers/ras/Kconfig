@@ -44,5 +44,6 @@ if RAS
 
 source "arch/x86/ras/Kconfig"
 source "drivers/ras/hisilicon/Kconfig"
+source "drivers/ras/amd/atl/Kconfig"
 
 endif
