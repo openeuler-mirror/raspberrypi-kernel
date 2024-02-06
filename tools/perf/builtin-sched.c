@@ -3306,8 +3306,12 @@ static int perf_sched__map(struct perf_sched *sched)
 {
 	int rc = -1;
 
-	if (setup_map_cpus(sched))
+	sched->curr_thread = calloc(MAX_CPUS, sizeof(*(sched->curr_thread)));
+	if (!sched->curr_thread)
 		return rc;
+
+	if (setup_map_cpus(sched))
+		goto out_free_curr_thread;
 
 	if (setup_color_pids(sched))
 		goto out_put_map_cpus;
@@ -3331,6 +3335,9 @@ out_put_color_pids:
 out_put_map_cpus:
 	zfree(&sched->map.comp_cpus);
 	perf_cpu_map__put(sched->map.cpus);
+
+out_free_curr_thread:
+	zfree(&sched->curr_thread);
 	return rc;
 }
 
@@ -3616,11 +3623,6 @@ int cmd_sched(int argc, const char **argv)
 	unsigned int i;
 	int ret = 0;
 
-	sched.curr_thread = calloc(MAX_CPUS, sizeof(*sched.curr_thread));
-	if (!sched.curr_thread) {
-		ret = -ENOMEM;
-		goto out;
-	}
 	sched.cpu_last_switched = calloc(MAX_CPUS, sizeof(*sched.cpu_last_switched));
 	if (!sched.cpu_last_switched) {
 		ret = -ENOMEM;
@@ -3702,7 +3704,6 @@ int cmd_sched(int argc, const char **argv)
 out:
 	free(sched.curr_pid);
 	free(sched.cpu_last_switched);
-	free(sched.curr_thread);
 
 	return ret;
 }
