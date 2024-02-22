@@ -70,7 +70,7 @@ static int bcm2835_rng_read(struct hwrng *rng, void *buf, size_t max,
 	while ((rng_readl(priv, RNG_STATUS) >> 24) == 0) {
 		if (!wait)
 			return 0;
-		hwrng_yield(rng);
+		hwrng_msleep(rng, 1000);
 	}
 
 	num_words = rng_readl(priv, RNG_STATUS) >> 24;
@@ -105,8 +105,10 @@ static int bcm2835_rng_init(struct hwrng *rng)
 	}
 
 	/* set warm-up count & enable */
-	rng_writel(priv, RNG_WARMUP_COUNT, RNG_STATUS);
-	rng_writel(priv, RNG_RBGEN, RNG_CTRL);
+	if (!(rng_readl(priv, RNG_CTRL) & RNG_RBGEN)) {
+		rng_writel(priv, RNG_WARMUP_COUNT, RNG_STATUS);
+		rng_writel(priv, RNG_RBGEN, RNG_CTRL);
+	}
 
 	return ret;
 }
