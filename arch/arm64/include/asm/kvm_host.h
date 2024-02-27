@@ -475,6 +475,8 @@ struct kvm_host_data {
 		u64 pmscr_el1;
 		/* Self-hosted trace */
 		u64 trfcr_el1;
+		/* Values of trap registers for the host before guest entry. */
+		u64 mdcr_el2;
 	} host_debug_state;
 };
 
@@ -533,9 +535,6 @@ struct kvm_vcpu_arch {
 	u64 hcr_el2;
 	u64 mdcr_el2;
 	u64 cptr_el2;
-
-	/* Values of trap registers for the host before guest entry. */
-	u64 mdcr_el2_host;
 
 	/* Exception Information */
 	struct kvm_vcpu_fault_info fault;
