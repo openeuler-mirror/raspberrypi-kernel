@@ -755,8 +755,6 @@ struct arm_smmu_device {
 	struct rb_root			streams;
 	struct mutex			streams_mutex;
 
-	bool				bypass;
-
 #ifdef CONFIG_HISI_VIRTCCA_CODA
 	int				s_evtq_irq;
 	int				s_gerr_irq;
