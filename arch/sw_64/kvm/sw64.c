@@ -118,6 +118,12 @@ void check_vcpu_requests(struct kvm_vcpu *vcpu)
 
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *vcpu)
 {
+	if (vcpu->arch.restart)
+		return 1;
+
+	if (vcpu->arch.vcb.vcpu_irq_disabled)
+		return 0;
+
 	return ((!bitmap_empty(vcpu->arch.irqs_pending, SWVM_IRQS) || !vcpu->arch.halted)
 			&& !vcpu->arch.power_off);
 }
