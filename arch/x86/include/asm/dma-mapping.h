@@ -9,7 +9,7 @@ static inline const struct dma_map_ops *get_arch_dma_ops(void)
 	return dma_ops;
 }
 
-#ifdef CONFIG_PCI
+#if IS_BUILTIN(CONFIG_INTEL_IOMMU) && IS_BUILTIN(CONFIG_X86_64)
 
 extern bool is_zhaoxin_kh40000;
 extern const struct dma_map_ops kh40000_dma_direct_ops;
