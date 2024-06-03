@@ -17,8 +17,6 @@
 
 #include "../../../kernel/dma/direct.h"
 
-bool is_zhaoxin_kh40000;
-
 /***
  * usage:
  *  set "zhaoxin_patch_bitmask=<value>" in cmdline

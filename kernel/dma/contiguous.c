@@ -206,6 +206,11 @@ static inline void __init dma_numa_cma_reserve(void)
 }
 #endif
 
+bool __weak is_zhaoxin_kh40000(void)
+{
+	return false;
+}
+
 /**
  * dma_contiguous_reserve() - reserve area(s) for contiguous memory handling
  * @limit: End address of the reserved memory (optional, 0 for any).
@@ -224,10 +229,9 @@ void __init dma_contiguous_reserve(phys_addr_t limit)
 
 	dma_numa_cma_reserve();
 
-#if defined(CONFIG_X86_64) && defined(CONFIG_PCI)
-	if (is_zhaoxin_kh40000)
+	if (is_zhaoxin_kh40000())
 		return;
-#endif
+
 	pr_debug("%s(limit %08lx)\n", __func__, (unsigned long)limit);
 
 	if (size_cmdline != -1) {

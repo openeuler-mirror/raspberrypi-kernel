@@ -717,13 +717,23 @@ static void __init apple_airport_reset(int bus, int slot, int func)
 	early_iounmap(mmio, BCM4331_MMIO_SIZE);
 }
 
-static void quirk_zhaoxin_dma_patch(int num, int slot, int func)
+bool __ro_after_init zhaoxin_kh40000;
+
+bool is_zhaoxin_kh40000(void)
+{
+	return zhaoxin_kh40000;
+}
+
+static void __init quirk_zhaoxin_dma_patch(int num, int slot, int func)
 {
 	u8 revision;
 
+	if (is_zhaoxin_kh40000())
+		return;
+
 	revision = read_pci_config_byte(num, slot, func, PCI_REVISION_ID);
 	if (revision == 0x10) {
-		is_zhaoxin_kh40000 = true;
+		zhaoxin_kh40000 = true;
 		dma_ops = &kh40000_dma_direct_ops;
 		pr_info("zhaoxin direct dma patch enabled\n");
 	}
