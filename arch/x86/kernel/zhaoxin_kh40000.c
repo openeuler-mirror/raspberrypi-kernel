@@ -30,7 +30,7 @@ enum {
 
 #define ZHAOXIN_PATCH_CODE_DEFAULT	ZHAOXIN_P2CW_NODE_CHECK
 
-unsigned long zhaoxin_patch_code = ZHAOXIN_PATCH_CODE_DEFAULT;
+static unsigned long zhaoxin_patch_code = ZHAOXIN_PATCH_CODE_DEFAULT;
 
 static int __init zhaoxin_patch_code_setup(char *str)
 {
@@ -322,7 +322,7 @@ static size_t kh40000_iommu_dma_opt_mapping_size(void)
 	return iommu_dma_ops->opt_mapping_size();
 }
 
-const struct dma_map_ops kh40000_dma_iommu_ops = {
+static const struct dma_map_ops kh40000_dma_iommu_ops = {
 	.flags			= DMA_F_PCI_P2PDMA_SUPPORTED,
 	.alloc			= kh40000_iommu_dma_alloc,
 	.free			= kh40000_iommu_dma_free,
