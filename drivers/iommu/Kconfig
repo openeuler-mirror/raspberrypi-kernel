@@ -150,7 +150,7 @@ config OF_IOMMU
 
 # IOMMU-agnostic DMA-mapping layer
 config IOMMU_DMA
-	def_bool ARM64 || IA64 || X86 || S390
+	def_bool ARM64 || IA64 || X86 || S390 || LOONGARCH
 	select DMA_OPS
 	select IOMMU_API
 	select IOMMU_IOVA
@@ -526,5 +526,18 @@ config  SMMU_BYPASS_DEV
 	  transformation only,with no address translation.
 	  E.g:SMMU allow iMR3408/3416 Raid bypass at DMA default domain
 	  to support other devices Virtualization through.
+
+# LOONGARCH IOMMU support
+config LOONGARCH_IOMMU
+	tristate "LOONGARCH IOMMU support"
+	select IOMMU_API
+	select IOMMU_DEFAULT_PASSTHROUGH
+	depends on LOONGARCH
+	help
+	  With this option you can enable support for LOONGARCH IOMMU hardware in
+	  your system. An IOMMU is a hardware component which provides
+	  remapping of DMA memory accesses from devices. With an LOONGARCH IOMMU you
+	  can isolate the DMA memory of different devices and protect the
+	  system from misbehaving device drivers or hardware.
 
 endif # IOMMU_SUPPORT
