@@ -770,8 +770,7 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	params_ptr->is_cmd_queue = 1;
 	params_ptr->smmu_id = smmu->s_smmu_id;
 	params_ptr->ioaddr = smmu->ioaddr;
-	params_ptr->strtab_base_RA_bit =
-		(smmu->strtab_cfg.strtab_base >> S_STRTAB_BASE_RA_SHIFT) & 0x1;
+	params_ptr->strtab_base_RA_bit = 0x1;
 	params_ptr->q_base_RA_WA_bit =
 		(smmu->cmdq.q.q_base >> S_CMDQ_BASE_RA_SHIFT) & 0x1;
 	if (tmi_smmu_device_reset(__pa(params_ptr)) != 0) {
@@ -801,8 +800,7 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	params_ptr->smmu_id = smmu->s_smmu_id;
 	params_ptr->q_base_RA_WA_bit =
 		 (smmu->evtq.q.q_base >> S_EVTQ_BASE_WA_SHIFT) & 0x1;
-	params_ptr->strtab_base_RA_bit =
-		(smmu->strtab_cfg.strtab_base >> S_STRTAB_BASE_RA_SHIFT) & 0x1;
+	params_ptr->strtab_base_RA_bit = 0x1;
 	if (tmi_smmu_device_reset(__pa(params_ptr)) != 0) {
 		dev_err(smmu->dev, "S_SMMU: failed to set s event queue regs\n");
 		smmu->s_smmu_id = ARM_S_SMMU_INVALID_ID;
