@@ -838,7 +838,7 @@ static void shmem_delete_from_page_cache(struct folio *folio, void *radswap)
 	__lruvec_stat_mod_folio(folio, NR_SHMEM, -nr);
 	shmem_reliable_folio_add(folio, -nr);
 	xa_unlock_irq(&mapping->i_pages);
-	folio_put(folio);
+	folio_put_refs(folio, nr);
 	BUG_ON(error);
 }
 
