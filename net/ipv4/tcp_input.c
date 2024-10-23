@@ -80,6 +80,7 @@
 #include <linux/jump_label_ratelimit.h>
 #include <net/busy_poll.h>
 #include <net/mptcp.h>
+#include "tcp_caqm.h"
 
 int sysctl_tcp_max_orphans __read_mostly = NR_FILE;
 
@@ -6006,6 +6007,7 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
 	struct tcp_sock *tp = tcp_sk(sk);
 	unsigned int len = skb->len;
 
+	try_to_recv_pkt_w_caqm(sk, skb);
 	/* TCP congestion window tracking */
 	trace_tcp_probe(sk, skb);
 
@@ -6628,6 +6630,7 @@ int tcp_rcv_state_process(struct sock *sk, struct sk_buff *skb)
 	bool acceptable;
 	SKB_DR(reason);
 
+	try_to_recv_pkt_w_caqm(sk, skb);
 	switch (sk->sk_state) {
 	case TCP_CLOSE:
 		SKB_DR_SET(reason, TCP_CLOSE);

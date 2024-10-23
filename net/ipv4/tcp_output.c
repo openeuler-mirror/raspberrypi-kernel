@@ -46,6 +46,7 @@
 #include <linux/static_key.h>
 
 #include <trace/events/tcp.h>
+#include "tcp_caqm.h"
 
 /* Refresh clocks of a TCP socket,
  * ensuring monotically increasing values.
@@ -1310,6 +1311,7 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	int err;
 
 	BUG_ON(!skb || !tcp_skb_pcount(skb));
+	try_to_update_skb_for_caqm(sk, skb);
 	tp = tcp_sk(sk);
 	prior_wstamp = tp->tcp_wstamp_ns;
 	tp->tcp_wstamp_ns = max(tp->tcp_wstamp_ns, tp->tcp_clock_cache);
@@ -1395,6 +1397,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	th->ack_seq		= htonl(rcv_nxt);
 	*(((__be16 *)th) + 6)	= htons(((tcp_header_size >> 2) << 12) |
 					tcb->tcp_flags);
+#ifdef CONFIG_ETH_CAQM
+	if (static_branch_unlikely(&sysctl_caqm_enable))
+		*(((__be16 *)th) + 6)	|= htons((tcb->unused & 0x0F) << 8);
+#endif
 
 	th->check		= 0;
 	th->urg_ptr		= 0;
@@ -3775,6 +3781,7 @@ struct sk_buff *tcp_make_synack(const struct sock *sk, struct dst_entry *dst,
 	th->window = htons(min(req->rsk_rcv_wnd, 65535U));
 	tcp_options_write(th, NULL, &opts);
 	th->doff = (tcp_header_size >> 2);
+	tcp_caqm_make_synack(sk, th);
 	TCP_INC_STATS(sock_net(sk), TCP_MIB_OUTSEGS);
 
 #ifdef CONFIG_TCP_MD5SIG

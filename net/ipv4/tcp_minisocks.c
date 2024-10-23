@@ -22,6 +22,7 @@
 #include <net/tcp.h>
 #include <net/xfrm.h>
 #include <net/busy_poll.h>
+#include "tcp_caqm.h"
 
 static bool tcp_in_window(u32 seq, u32 end_seq, u32 s_win, u32 e_win)
 {
@@ -873,6 +874,7 @@ int tcp_child_process(struct sock *parent, struct sock *child,
 	int ret = 0;
 	int state = child->sk_state;
 
+	copy_ecn_flags(parent, child);
 	/* record sk_napi_id and sk_rx_queue_mapping of child. */
 	sk_mark_napi_id_set(child, skb);
 

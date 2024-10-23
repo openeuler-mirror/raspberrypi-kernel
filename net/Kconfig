@@ -521,4 +521,9 @@ config NETACC_TERRACE
 	  Accelerating intra-node communication on the data plane of the
 	  Terrace service.
 
+config ETH_CAQM
+	bool "Enable CAQM for Ethernet"
+	help
+	  Enable CAQM (Congestion-Aware Queue Management) for Ethernet drivers.
+
 endif   # if NET

@@ -36,6 +36,7 @@
 #include <net/netfilter/nf_conntrack_labels.h>
 #endif
 #include <linux/bpf-netns.h>
+#include "flow_dissector_caqm.h"
 
 static void dissector_set_key(struct flow_dissector *flow_dissector,
 			      enum flow_dissector_key_id key_id)
@@ -1475,7 +1476,11 @@ proto_again:
 		break;
 
 	default:
+		#ifdef CONFIG_ETH_CAQM
+		fdret = rps_try_skip_caqm_hdr(skb, data, &proto, &nhoff, hlen);
+		#else
 		fdret = FLOW_DISSECT_RET_OUT_BAD;
+		#endif
 		break;
 	}
 

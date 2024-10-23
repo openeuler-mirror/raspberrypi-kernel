@@ -1051,8 +1051,11 @@ struct sk_buff {
 	__u16			pad1;
 #endif
 	); /* end headers group */
-
+#ifdef CONFIG_ETH_CAQM
+	KABI_USE(1, u64 caqm_info)
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
