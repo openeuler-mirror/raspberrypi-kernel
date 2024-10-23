@@ -526,7 +526,11 @@ static void pci_device_shutdown(struct device *dev)
 	 * If it is not a kexec reboot, firmware will hit the PCI
 	 * devices with big hammer and stop their DMA any way.
 	 */
+#ifdef CONFIG_LOONGARCH
+	if (kexec_in_progress && !pci_is_bridge(pci_dev) && (pci_dev->current_state <= PCI_D3hot))
+#else
 	if (kexec_in_progress && (pci_dev->current_state <= PCI_D3hot))
+#endif
 		pci_clear_master(pci_dev);
 }
 
