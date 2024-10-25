@@ -184,12 +184,14 @@ bool wc_enabled = false;
 
 EXPORT_SYMBOL(wc_enabled);
 
+static int wc_arg = -1;
+
 static int __init setup_writecombine(char *p)
 {
 	if (!strcmp(p, "on"))
-		wc_enabled = true;
+		wc_arg = true;
 	else if (!strcmp(p, "off"))
-		wc_enabled = false;
+		wc_arg = false;
 	else
 		pr_warn("Unknown writecombine setting \"%s\".\n", p);
 
@@ -371,6 +373,26 @@ out:
 	*cmdline_p = boot_command_line;
 }
 
+static void __init writecombine_detect(void)
+{
+	u64 cpuname;
+
+	if (wc_arg >= 0) {
+		wc_enabled = wc_arg;
+		return;
+	}
+
+	cpuname = iocsr_read64(LOONGARCH_IOCSR_CPUNAME);
+
+	switch (cpuname) {
+	case 0x0000303030364333:
+		wc_enabled = true;
+		break;
+	default:
+		break;
+	}
+}
+
 void __init platform_init(void)
 {
 	arch_reserve_vmcore();
@@ -394,6 +416,8 @@ void __init platform_init(void)
 	smbios_parse();
 	pr_info("The BIOS Version: %s\n", b_info.bios_version);
 
+	writecombine_detect();
+	pr_info("WriteCombine: %s\n", wc_enabled ? "on":"off");
 	efi_runtime_init();
 }
 
