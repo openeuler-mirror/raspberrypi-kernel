@@ -73,6 +73,155 @@ extern void __memcpy_fromio(void *to, const volatile void __iomem *from, size_t 
 
 #define __io_aw() mmiowb()
 
+#include <linux/spinlock.h>
+extern spinlock_t lcl_node_lock[16];
+#define __raw_readb __raw_readb
+static inline u8 __raw_readb(const volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+	u8 val;
+
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node + 8], irq_flag);
+	val = *(const volatile u8 __force *)addr;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node + 8], irq_flag);
+	/* read barrier */
+	rmb();
+	return val;
+}
+
+#define __raw_readw __raw_readw
+static inline u16 __raw_readw(const volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+	u16 val;
+
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node + 8], irq_flag);
+	val = *(const volatile u16 __force *)addr;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node + 8], irq_flag);
+	/* read barrier */
+	rmb();
+	return val;
+}
+
+#define __raw_readl __raw_readl
+static inline u32 __raw_readl(const volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+	u32 val;
+
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node + 8], irq_flag);
+	val = *(const volatile u32 __force *)addr;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node + 8], irq_flag);
+	/* read barrier */
+	rmb();
+	return val;
+}
+
+#ifdef CONFIG_64BIT
+#define __raw_readq __raw_readq
+static inline u64 __raw_readq(const volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+	u64 val;
+
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node + 8], irq_flag);
+	val = *(const volatile u64 __force *)addr;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node + 8], irq_flag);
+	/* read barrier */
+	rmb();
+	return val;
+}
+#endif /* CONFIG_64BIT */
+
+#define __raw_writeb __raw_writeb
+static inline void __raw_writeb(u8 value, volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+
+	/* write barrier */
+	wmb();
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node], irq_flag);
+	*(volatile u8 __force *)addr = value;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node], irq_flag);
+}
+
+#define __raw_writew __raw_writew
+static inline void __raw_writew(u16 value, volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+
+	/* write barrier */
+	wmb();
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node], irq_flag);
+	*(volatile u16 __force *)addr = value;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node], irq_flag);
+}
+
+#define __raw_writel __raw_writel
+static inline void __raw_writel(u32 value, volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+
+	/* write barrier */
+	wmb();
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node], irq_flag);
+	*(volatile u32 __force *)addr = value;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node], irq_flag);
+}
+
+#ifdef CONFIG_64BIT
+#define __raw_writeq __raw_writeq
+static inline void __raw_writeq(u64 value, volatile void __iomem *addr)
+{
+	unsigned long dst_node, node;
+	unsigned long irq_flag;
+
+	/* write barrier */
+	wmb();
+	dst_node = ((unsigned long)addr >> 44) & 0xf;
+	node = get_csr_cpuid() / 32;
+	if (node != dst_node)
+		spin_lock_irqsave(&lcl_node_lock[node], irq_flag);
+	*(volatile u64 __force *)addr = value;
+	if (node != dst_node)
+		spin_unlock_irqrestore(&lcl_node_lock[node], irq_flag);
+}
+#endif /* CONFIG_64BIT */
 #include <asm-generic/io.h>
 
 #define ARCH_HAS_VALID_PHYS_ADDR_RANGE
