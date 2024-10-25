@@ -1241,6 +1241,7 @@ static int hns_roce_create_qp_common(struct hns_roce_dev *hr_dev,
 	mutex_init(&hr_qp->mutex);
 	spin_lock_init(&hr_qp->sq.lock);
 	spin_lock_init(&hr_qp->rq.lock);
+	spin_lock_init(&hr_qp->flush_lock);
 
 	hr_qp->state = IB_QPS_RESET;
 	hr_qp->flush_flag = 0;
