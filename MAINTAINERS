@@ -891,6 +891,12 @@ Q:	https://patchwork.kernel.org/project/linux-rdma/list/
 F:	drivers/infiniband/hw/efa/
 F:	include/uapi/rdma/efa-abi.h
 
+AMD ADDRESS TRANSLATION LIBRARY (ATL)
+M:	Yazen Ghannam <Yazen.Ghannam@amd.com>
+L:	linux-edac@vger.kernel.org
+S:	Supported
+F:	drivers/ras/amd/atl/*
+
 AMD CDX BUS DRIVER
 M:	Nipun Gupta <nipun.gupta@amd.com>
 M:	Nikhil Agarwal <nikhil.agarwal@amd.com>
@@ -18049,6 +18055,12 @@ RAYLINK/WEBGEAR 802.11 WIRELESS LAN DRIVER
 L:	linux-wireless@vger.kernel.org
 S:	Orphan
 F:	drivers/net/wireless/legacy/ray*
+
+RAS FRU MEMORY POISON MANAGER (FMPM)
+M:	Yazen Ghannam <Yazen.Ghannam@amd.com>
+L:	linux-edac@vger.kernel.org
+S:	Maintained
+F:	drivers/ras/amd/fmpm.c
 
 RC-CORE / LIRC FRAMEWORK
 M:	Sean Young <sean@mess.org>

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
+#include <linux/ras.h>
 #include "amd64_edac.h"
 #include <asm/amd_nb.h>
 
@@ -3115,6 +3116,7 @@ static void decode_umc_error(int node_id, struct mce *m)
 	u8 ecc_type = (m->status >> 45) & 0x3;
 	struct mem_ctl_info *mci;
 	struct amd64_pvt *pvt;
+	struct atl_err a_err;
 	struct err_info err;
 	u64 sys_addr;
 	u8 umc;
@@ -3148,16 +3150,23 @@ static void decode_umc_error(int node_id, struct mce *m)
 
 	pvt->ops->get_err_info(m, &err);
 
-	if (hygon_f18h_m4h() && boot_cpu_data.x86_model == 0x6)
+	if (hygon_f18h_m4h() && boot_cpu_data.x86_model == 0x6) {
 		umc = err.channel << 1;
-	else
-		umc = err.channel;
+		if (umc_normaddr_to_sysaddr(m->addr, pvt->mc_node_id, umc, &sys_addr)) {
+			err.err_code = ERR_NORM_ADDR;
+			goto log_error;
+		}
+	} else {
+		a_err.addr = m->addr;
+		a_err.ipid = m->ipid;
+		a_err.cpu  = m->extcpu;
 
-	if (umc_normaddr_to_sysaddr(m->addr, pvt->mc_node_id, umc, &sys_addr)) {
-		err.err_code = ERR_NORM_ADDR;
-		goto log_error;
+		sys_addr = (u64)amd_convert_umc_mca_addr_to_sys_addr(&a_err);
+		if (IS_ERR_VALUE(sys_addr)) {
+			err.err_code = ERR_NORM_ADDR;
+			goto log_error;
+		}
 	}
-
 	error_address_to_page_and_offset(sys_addr, &err);
 
 log_error:
