@@ -2266,7 +2266,7 @@ static int hpage_collapse_scan_file(struct mm_struct *mm, unsigned long addr,
 			continue;
 
 		if (xa_is_value(folio)) {
-			++swap;
+			swap += 1 << xas_get_order(&xas);
 			if (cc->is_khugepaged &&
 			    swap > khugepaged_max_ptes_swap) {
 				result = SCAN_EXCEED_SWAP_PTE;
@@ -2318,7 +2318,7 @@ static int hpage_collapse_scan_file(struct mm_struct *mm, unsigned long addr,
 		 * is just too costly...
 		 */
 
-		present++;
+		present += folio_nr_pages(folio);
 
 		if (need_resched()) {
 			xas_pause(&xas);
