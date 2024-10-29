@@ -8,4 +8,5 @@
 
 #include <uapi/asm/unistd.h>
 
+#define __ARCH_WANT_NEW_STAT
 #define NR_syscalls (__NR_syscalls)
