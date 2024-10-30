@@ -74,6 +74,7 @@ enum {
 };
 
 struct xsc_dcbx {
+	u8 enable;
 	enum xsc_dcbx_oper_mode   mode;
 	struct xsc_cee_config     cee_cfg; /* pending configuration */
 	u8                        dscp_app_cnt;
@@ -130,6 +131,8 @@ struct xsc_adapter {
 	struct xsc_eth_params  nic_param;
 	struct xsc_rss_params  rss_params;
 	struct xsc_vlan_params vlan_params;
+
+	struct xsc_flow_steering fs;
 
 	struct workqueue_struct		*workq;
 	struct work_struct		update_carrier_work;

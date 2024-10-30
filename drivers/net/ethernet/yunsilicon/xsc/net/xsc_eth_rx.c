@@ -258,6 +258,9 @@ static inline void xsc_complete_rx_cqe(struct xsc_rq *rq,
 	stats->packets++;
 	stats->bytes += cqe_bcnt;
 	xsc_build_rx_skb(cqe, cqe_bcnt, rq, skb, wi);
+
+	rq->dim_obj.sample.pkt_ctr  = rq->stats->packets;
+	rq->dim_obj.sample.byte_ctr = rq->stats->bytes;
 }
 
 static inline void xsc_add_skb_frag(struct xsc_rq *rq,
@@ -343,6 +346,7 @@ struct sk_buff *xsc_skb_from_cqe_nonlinear(struct xsc_rq *rq,
 {
 	struct xsc_rq_frag_info *frag_info = &rq->wqe.info.arr[0];
 	struct xsc_wqe_frag_info *head_wi = wi;
+	struct xsc_wqe_frag_info *rx_wi = wi;
 	u16 headlen  = min_t(u32, XSC_RX_MAX_HEAD, cqe_bcnt);
 	u16 frag_headlen = headlen;
 	u16 byte_cnt = cqe_bcnt - headlen;
@@ -353,6 +357,7 @@ struct sk_buff *xsc_skb_from_cqe_nonlinear(struct xsc_rq *rq,
 	u8 fragcnt = 0;
 	u16 head_offset = head_wi->offset;
 	u16 frag_consumed_bytes = 0;
+	int i = 0;
 
 #ifndef NEED_CREATE_RX_THREAD
 	skb = napi_alloc_skb(rq->cq.napi, ALIGN(XSC_RX_MAX_HEAD, sizeof(long)));
@@ -372,6 +377,15 @@ struct sk_buff *xsc_skb_from_cqe_nonlinear(struct xsc_rq *rq,
 		byte_cnt = cqe_bcnt - headlen - XSC_PPH_HEAD_LEN;
 		head_offset += XSC_PPH_HEAD_LEN;
 	}
+
+	if (byte_cnt == 0 && (XSC_GET_PFLAG(&c->adapter->nic_param, XSC_PFLAG_RX_COPY_BREAK))) {
+		for (i = 0; i < rq->wqe.info.num_frags; i++, wi++)
+			wi->is_available = 1;
+		goto ret;
+	}
+
+	for (i = 0; i < rq->wqe.info.num_frags; i++, rx_wi++)
+		rx_wi->is_available = 0;
 
 	while (byte_cnt) {
 		/*figure out whether the first fragment can be a page ?*/
@@ -405,6 +419,7 @@ struct sk_buff *xsc_skb_from_cqe_nonlinear(struct xsc_rq *rq,
 		wi++;
 	}
 
+ret:
 	/* copy header */
 	xsc_copy_skb_header(dev, skb, head_wi->di, head_offset, headlen);
 
@@ -499,19 +514,12 @@ void xsc_page_release_dynamic(struct xsc_rq *rq,
 #endif
 
 		xsc_page_dma_unmap(rq, dma_info);
-#ifdef HAVE_PAGE_POOL_HEADER
 		page_pool_recycle_direct(rq->page_pool, dma_info->page);
-#else
-		__free_page(dma_info->page);
-#endif
 	} else {
 		xsc_page_dma_unmap(rq, dma_info);
-#ifdef HAVE_PAGE_POOL_HEADER
-#ifdef HAVE_PAGE_POOL_RELEASE_PAGE
-		page_pool_release_page(rq->page_pool, dma_info->page);
-#endif
-#endif
-		xsc_put_page(dma_info);
+		page_pool_put_defragged_page(rq->page_pool,
+					     dma_info->page,
+					     -1, true);
 	}
 }
 
@@ -532,8 +540,23 @@ static inline void xsc_free_rx_wqe(struct xsc_rq *rq,
 {
 	int i;
 
-	for (i = 0; i < rq->wqe.info.num_frags; i++, wi++)
+	for (i = 0; i < rq->wqe.info.num_frags; i++, wi++) {
+		if (wi->is_available && recycle)
+			continue;
 		xsc_put_rx_frag(rq, wi, recycle);
+	}
+}
+
+static void xsc_dump_error_rqcqe(struct xsc_rq *rq,
+				 struct xsc_cqe *cqe)
+{
+	struct xsc_channel *c = rq->cq.channel;
+	struct net_device *netdev  = c->adapter->netdev;
+	u32 ci = xsc_cqwq_get_ci(&rq->cq.wq);
+
+	net_err_ratelimited("Error cqe on dev=%s, cqn=%d, ci=%d, rqn=%d, qpn=%d, error_code=0x%x\n",
+			    netdev->name, rq->cq.xcq.cqn, ci,
+			    rq->rqn, cqe->qp_id, get_cqe_opcode(cqe));
 }
 
 void xsc_eth_handle_rx_cqe(struct xsc_cqwq *cqwq,
@@ -550,13 +573,17 @@ void xsc_eth_handle_rx_cqe(struct xsc_cqwq *cqwq,
 	ci = xsc_wq_cyc_ctr2ix(wq, cqwq->cc);
 	wi = get_frag(rq, ci);
 	if (unlikely(cqe_opcode & BIT(7))) {
-		rq->stats->wqe_err++;
+		xsc_dump_error_rqcqe(rq, cqe);
+		rq->stats->cqe_err++;
 		goto free_wqe;
 	}
 
 	cqe_bcnt = le32_to_cpu(cqe->msg_len);
+	if (cqe->has_pph && cqe_bcnt <= XSC_PPH_HEAD_LEN) {
+		rq->stats->wqe_err++;
+		goto free_wqe;
+	}
 
-	/* Check packet size. */
 	if (unlikely(cqe_bcnt > rq->frags_sz)) {
 		if (!XSC_GET_PFLAG(&c->adapter->nic_param, XSC_PFLAG_DROPLESS_RQ)) {
 			rq->stats->oversize_pkts_sw_drop += cqe_bcnt;
@@ -571,7 +598,9 @@ void xsc_eth_handle_rx_cqe(struct xsc_cqwq *cqwq,
 	if (!skb)
 		goto free_wqe;
 
-	xsc_complete_rx_cqe(rq, cqe, cqe_bcnt, skb, wi);
+	xsc_complete_rx_cqe(rq, cqe,
+			    cqe->has_pph == 1 ? cqe_bcnt - XSC_PPH_HEAD_LEN : cqe_bcnt,
+			    skb, wi);
 
 #ifdef NEED_CREATE_RX_THREAD
 	netif_rx_ni(skb);
@@ -582,22 +611,6 @@ void xsc_eth_handle_rx_cqe(struct xsc_cqwq *cqwq,
 free_wqe:
 	xsc_free_rx_wqe(rq, wi, true);
 	xsc_wq_cyc_pop(wq);
-}
-
-static void xsc_dump_error_rqcqe(struct xsc_rq *rq,
-				 struct xsc_cqe *cqe)
-{
-	struct xsc_channel *c = rq->cq.channel;
-	struct net_device *netdev  = c->adapter->netdev;
-	u32 ci = xsc_cqwq_get_ci(&rq->cq.wq);
-
-	net_err_ratelimited("Error cqe on dev=%s, cqn=%d, ci=%d, rqn=%d, qpn=%d, error_code=0x%x\n",
-			    netdev->name, rq->cq.xcq.cqn, ci,
-			    rq->rqn, cqe->qp_id, get_cqe_opcode(cqe));
-
-#ifdef XSC_DEBUG
-	xsc_dump_err_cqe(rq->cq.xdev, cqe);
-#endif
 }
 
 int xsc_poll_rx_cq(struct xsc_cq *cq, int budget)
@@ -612,12 +625,6 @@ int xsc_poll_rx_cq(struct xsc_cq *cq, int budget)
 		return 0;
 
 	while ((work_done < budget) && (cqe = xsc_cqwq_get_cqe(cqwq))) {
-		if (unlikely(get_cqe_opcode(cqe) & BIT(7))) {
-			xsc_dump_error_rqcqe(rq, cqe);
-			rq->stats->cqe_err++;
-			break;
-		}
-
 		rq->stats->cqes++;
 
 		rq->handle_rx_cqe(cqwq, rq, cqe);
@@ -634,10 +641,9 @@ int xsc_poll_rx_cq(struct xsc_cq *cq, int budget)
 	wmb();
 
 out:
-	rq->post_wqes(rq);
 	ch_stats->poll += work_done;
 	if (work_done < budget) {
-		if (ch_stats->poll == 0 && cq->channel->rx_int)
+		if (ch_stats->poll == 0)
 			ch_stats->poll_0++;
 		else if (ch_stats->poll < 64)
 			ch_stats->poll_1_63++;
@@ -665,22 +671,14 @@ static inline int xsc_page_alloc_mapped(struct xsc_rq *rq,
 	rq->stats->cache_alloc++;
 #endif
 
-#ifdef HAVE_PAGE_POOL_HEADER
 	dma_info->page = page_pool_dev_alloc_pages(rq->page_pool);
-#else
-	dma_info->page = alloc_page(GFP_ATOMIC);
-#endif
 	if (unlikely(!dma_info->page))
 		return -ENOMEM;
 
 	dma_info->addr = dma_map_page(dev, dma_info->page, 0,
 				      XSC_RX_FRAG_SZ, rq->buff.map_dir);
 	if (unlikely(dma_mapping_error(dev, dma_info->addr))) {
-#ifdef HAVE_PAGE_POOL_HEADER
 		page_pool_recycle_direct(rq->page_pool, dma_info->page);
-#else
-		__free_page(dma_info->page);
-#endif
 		dma_info->page = NULL;
 		return -ENOMEM;
 	}
@@ -693,7 +691,7 @@ static inline int xsc_get_rx_frag(struct xsc_rq *rq,
 {
 	int err = 0;
 
-	if (!frag->offset)
+	if (!frag->offset && !frag->is_available)
 		/* On first frag (offset == 0), replenish page (dma_info actually).
 		 * Other frags that point to the same dma_info (with a different
 		 * offset) should just use the new one without replenishing again

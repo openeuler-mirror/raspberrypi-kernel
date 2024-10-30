@@ -116,6 +116,7 @@ struct xsc_core_qp {
 	struct xsc_qp_trace	*trace_info;
 	u16	qp_type_internal;
 	u16	grp_id;
+	u8	mac_id;
 };
 
 struct xsc_qp_rsc {

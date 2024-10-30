@@ -17,10 +17,6 @@
 #define NEED_CREATE_RX_THREAD
 #endif
 
-#ifndef RUN_WITH_PSV
-#define XSC_MSIX_BAR_EMUL
-#endif
-
 #define PAGE_SHIFT_4K          12
 #define PAGE_SIZE_4K           (_AC(1, UL) << PAGE_SHIFT_4K)
 #define PAGE_MASK_4K           (~(PAGE_SIZE_4K - 1))
@@ -35,7 +31,7 @@
 #define XSC_RSS_INDIR_TBL_S     256
 #define XSC_MAX_TSO_PAYLOAD     0x10000/*64kb*/
 
-#define MAX_BOARD_NUM	8
+#define MAX_BOARD_NUM	32
 
 #define DMA_LO_LE(x)		__cpu_to_le32(lower_32_bits(x))
 #define DMA_HI_LE(x)		__cpu_to_le32(upper_32_bits(x))

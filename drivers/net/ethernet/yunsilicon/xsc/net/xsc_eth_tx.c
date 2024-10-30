@@ -263,10 +263,6 @@ static void xsc_dump_error_sqcqe(struct xsc_sq *sq,
 	net_err_ratelimited("Err cqe on dev %s cqn=0x%x ci=0x%x sqn=0x%x err_code=0x%x qpid=0x%x\n",
 			    netdev->name, sq->cq.xcq.cqn, ci,
 			    sq->sqn, get_cqe_opcode(cqe), cqe->qp_id);
-
-#ifdef XSC_DEBUG
-	xsc_dump_err_cqe(sq->cq.xdev, cqe);
-#endif
 }
 
 void xsc_free_tx_wqe(struct device *dev, struct xsc_sq *sq)
@@ -389,7 +385,7 @@ bool xsc_poll_tx_cq(struct xsc_cq *cq, int napi_budget)
 #endif
 		ETH_DEBUG_LOG("ci=%d, sqcc=%d, pkts=%d\n", ci, sqcc, npkts);
 
-	} while ((++i <= XSC_TX_POLL_BUDGET) && (cqe = xsc_cqwq_get_cqe(&cq->wq)));
+	} while ((++i <= napi_budget) && (cqe = xsc_cqwq_get_cqe(&cq->wq)));
 
 	stats->cqes += i;
 
@@ -485,6 +481,9 @@ retry_send:
 	cseg = &wqe->ctrl;
 	dseg = &wqe->data[0];
 
+	if (unlikely(num_bytes == 0))
+		goto err_drop;
+
 	xsc_txwqe_build_csegs(sq, skb, mss, ihs, headlen,
 			      opcode, ds_cnt, num_bytes, cseg);
 
@@ -498,6 +497,10 @@ retry_send:
 
 	stats->bytes     += num_bytes;
 	stats->xmit_more += xsc_netdev_xmit_more(skb);
+
+	sq->dim_obj.sample.pkt_ctr  = sq->stats->packets;
+	sq->dim_obj.sample.byte_ctr = sq->stats->bytes;
+
 	return NETDEV_TX_OK;
 
 err_drop:
