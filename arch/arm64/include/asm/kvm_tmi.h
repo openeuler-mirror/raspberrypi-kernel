@@ -366,10 +366,6 @@ static inline bool is_armv8_4_sel2_present(void)
 			ID_AA64PFR0_SEL2_MASK) == 1UL;
 }
 
-#ifndef CONFIG_ARM_PMU
-#define arm_pmu_set_phys_irq(x)	do {} while (0)
-#endif
-
 u64 tmi_version(void);
 u64 tmi_data_create(u64 data, u64 rd, u64 map_addr, u64 src, u64 level);
 u64 tmi_data_destroy(u64 rd, u64 map_addr, u64 level);
