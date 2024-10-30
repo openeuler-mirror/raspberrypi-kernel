@@ -67,8 +67,12 @@ int xsc_buf_alloc(struct xsc_core_device *xdev, int size, int max_direct,
 			pages = kmalloc_array(buf->nbufs, sizeof(*pages), GFP_KERNEL);
 			if (!pages)
 				goto err_free;
-			for (i = 0; i < buf->nbufs; i++)
-				pages[i] = virt_to_page(buf->page_list[i].buf);
+			for (i = 0; i < buf->nbufs; i++) {
+				if (is_vmalloc_addr(buf->page_list[i].buf))
+					pages[i] = vmalloc_to_page(buf->page_list[i].buf);
+				else
+					pages[i] = virt_to_page(buf->page_list[i].buf);
+			}
 			buf->direct.buf = vmap(pages, buf->nbufs, VM_MAP, PAGE_KERNEL);
 			kfree(pages);
 			if (!buf->direct.buf)

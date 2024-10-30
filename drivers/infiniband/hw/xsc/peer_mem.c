@@ -238,6 +238,7 @@ void *ib_register_peer_memory_client(const struct peer_memory_client *peer_clien
 
 	mutex_lock(&peer_memory_mutex);
 	list_add_tail(&ib_peer_client->core_peer_list, &peer_memory_list);
+
 	mutex_unlock(&peer_memory_mutex);
 	return ib_peer_client;
 }

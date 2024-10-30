@@ -3,9 +3,7 @@
  * Copyright (C) 2021 - 2023, Shanghai Yunsilicon Technology Co., Ltd.
  * All rights reserved.
  */
-
 #include <linux/sched/mm.h>
-
 #ifndef CONFIG_INFINIBAND_PEER_MEMORY
 #include "ib_peer_mem.h"
 #endif
@@ -51,11 +49,6 @@ static struct ib_umem_ex *peer_umem_get(struct ib_peer_memory_client *ib_peer_me
 	if (ret)
 		goto out;
 
-	umem->page_shift = ilog2(peer_mem->get_page_size
-				 (umem_ex->peer_mem_client_context));
-	if (BIT(umem->page_shift) <= 0)
-		goto put_pages;
-
 	ret = peer_mem->dma_map(&umem->sg_head,
 				umem_ex->peer_mem_client_context,
 				umem->context->device->dma_device,
@@ -65,7 +58,7 @@ static struct ib_umem_ex *peer_umem_get(struct ib_peer_memory_client *ib_peer_me
 		goto put_pages;
 
 	atomic64_add(umem->nmap, &ib_peer_mem->stats.num_reg_pages);
-	atomic64_add(umem->nmap * BIT(umem->page_shift), &ib_peer_mem->stats.num_reg_bytes);
+	atomic64_add(umem->nmap * BIT(PAGE_SHIFT), &ib_peer_mem->stats.num_reg_bytes);
 	atomic64_inc(&ib_peer_mem->stats.num_alloc_mrs);
 	return umem_ex;
 
@@ -178,7 +171,7 @@ void ib_umem_ex_release(struct ib_umem_ex *umem_ex)
 		peer_mem->put_pages(&umem->sg_head,
 				umem_ex->peer_mem_client_context);
 		atomic64_add(umem->nmap, &ib_peer_mem->stats.num_dereg_pages);
-		atomic64_add(umem->nmap * BIT(umem->page_shift),
+		atomic64_add(umem->nmap * BIT(PAGE_SHIFT),
 			     &ib_peer_mem->stats.num_dereg_bytes);
 		atomic64_inc(&ib_peer_mem->stats.num_dealloc_mrs);
 		ib_put_peer_client(ib_peer_mem, umem_ex->peer_mem_client_context);

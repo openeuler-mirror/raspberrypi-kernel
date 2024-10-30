@@ -18,8 +18,4 @@
 #define XSC_BQL_SUPPORT
 #endif
 
-#ifndef NO_ESWITCH_SUPPORT
-#define CONFIG_XSC_ESWITCH
-#endif
-
 #endif  /*XSC_MACRO_H*/

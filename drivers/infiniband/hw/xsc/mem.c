@@ -75,12 +75,7 @@ int xsc_find_best_pgsz(struct ib_umem *umem,
 	int pa_index;
 	u64 chunk_pa;
 	int chunk_npages;
-#if defined(HAVE_IB_MEM_PAGE_SHIFT)
-	// In some ubuntu kernels, umem page shift maybe 0 for host memory
-	unsigned long page_shift = umem->page_shift != 0 ? umem->page_shift : PAGE_SHIFT;
-#else
 	unsigned long page_shift = PAGE_SHIFT;
-#endif
 
 	pgsz_bitmap &= GENMASK(BITS_PER_LONG - 1, 0);
 
@@ -207,7 +202,6 @@ void __xsc_ib_cont_pages(struct ib_umem *umem, u64 addr,
 	int i = 0;
 	struct scatterlist *sg;
 	int entry;
-	// TODO: need peer mem support
 	unsigned long page_shift = PAGE_SHIFT;
 
 	addr = addr >> page_shift;
