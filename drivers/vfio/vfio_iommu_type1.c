@@ -79,7 +79,6 @@ struct vfio_iommu {
 	uint64_t		num_non_pinned_groups;
 	uint64_t		num_non_hwdbm_domains;
 	bool			v2;
-	bool			nesting;
 	bool			dirty_page_tracking;
 	struct list_head	emulated_iommu_groups;
 	bool			dirty_log_get_no_clear;
@@ -2694,12 +2693,6 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	if (!domain->domain)
 		goto out_free_domain;
 
-	if (iommu->nesting) {
-		ret = iommu_enable_nesting(domain->domain);
-		if (ret)
-			goto out_domain;
-	}
-
 #ifdef CONFIG_HISI_VIRTCCA_CODA
 	if (is_virtcca_cvm_enable() && iommu->secure)
 		domain->domain->secure = true;
@@ -3060,9 +3053,7 @@ static void *vfio_iommu_type1_open(unsigned long arg)
 	switch (arg) {
 	case VFIO_TYPE1_IOMMU:
 		break;
-	case VFIO_TYPE1_NESTING_IOMMU:
-		iommu->nesting = true;
-		fallthrough;
+	case __VFIO_RESERVED_TYPE1_NESTING_IOMMU:
 	case VFIO_TYPE1v2_IOMMU:
 		iommu->v2 = true;
 		break;
@@ -3166,7 +3157,6 @@ static int vfio_iommu_type1_check_extension(struct vfio_iommu *iommu,
 #ifdef CONFIG_HISI_VIRTCCA_CODA
 	case VFIO_TYPE1v2_S_IOMMU:
 #endif
-	case VFIO_TYPE1_NESTING_IOMMU:
 	case VFIO_UNMAP_ALL:
 		return 1;
 	case VFIO_UPDATE_VADDR:
