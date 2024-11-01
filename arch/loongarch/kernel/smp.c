@@ -35,8 +35,6 @@
 #include <asm/time.h>
 #include "legacy_boot.h"
 
-spinlock_t lcl_node_lock[16];
-EXPORT_SYMBOL(lcl_node_lock);
 int __cpu_number_map[NR_CPUS];   /* Map physical to logical */
 EXPORT_SYMBOL(__cpu_number_map);
 
@@ -198,19 +196,7 @@ static void ipi_write_action(int cpu, u32 action)
 
 static void loongson_send_ipi_single(int cpu, unsigned int action)
 {
-	unsigned int curr_cpu = cpu_logical_map(smp_processor_id());
-	unsigned int t_cpu = cpu_logical_map(cpu);
-	int flag = -1;
-	unsigned long irq_flag;
-
-	if ((curr_cpu / 32) != (t_cpu / 32)) {
-		flag = curr_cpu / 32;
-		spin_lock_irqsave(&lcl_node_lock[flag], irq_flag);
-		asm ("dbar 0x0");
-	}
 	ipi_write_action(cpu_logical_map(cpu), (u32)action);
-	if (flag >= 0)
-		spin_unlock_irqrestore(&lcl_node_lock[flag], irq_flag);
 }
 
 static void loongson_send_ipi_mask(const struct cpumask *mask, unsigned int action)
@@ -218,7 +204,7 @@ static void loongson_send_ipi_mask(const struct cpumask *mask, unsigned int acti
 	unsigned int i;
 
 	for_each_cpu(i, mask)
-		loongson_send_ipi_single(i, (u32)action);
+		ipi_write_action(cpu_logical_map(i), (u32)action);
 }
 
 void arch_send_call_function_single_ipi(int cpu)
@@ -319,10 +305,6 @@ static void __init fdt_smp_setup(void)
 
 void __init loongson_smp_setup(void)
 {
-	int i;
-
-	for (i = 0; i < 16; i++)
-		spin_lock_init(&lcl_node_lock[i]);
 	fdt_smp_setup();
 
 	cpu_data[0].core = cpu_logical_map(0) % loongson_sysconf.cores_per_package;
