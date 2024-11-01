@@ -516,6 +516,9 @@ struct module {
 #ifdef CONFIG_DEBUG_INFO_BTF_MODULES
 	unsigned int btf_data_size;
 	void *btf_data;
+#else
+	KABI_DEPRECATE(unsigned int, btf_data_size)
+	KABI_DEPRECATE(void *, btf_data)
 #endif
 #ifdef CONFIG_JUMP_LABEL
 	struct jump_entry *jump_entries;
