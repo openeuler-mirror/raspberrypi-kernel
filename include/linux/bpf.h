@@ -302,9 +302,10 @@ struct bpf_map {
 	bool bypass_spec_v1;
 	bool frozen; /* write-once; write-protected by freeze_mutex */
 	bool free_after_mult_rcu_gp;
+	KABI_FILL_HOLE(bool free_after_rcu_gp)
 	s64 __percpu *elem_count;
 
-	KABI_RESERVE(1)
+	KABI_USE(1, atomic64_t sleepable_refcnt)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
