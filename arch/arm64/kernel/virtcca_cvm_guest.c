@@ -119,3 +119,10 @@ int set_cvm_memory_decrypted(unsigned long addr, int numpages)
 {
 	return __set_memory_encrypted(addr, numpages, false);
 }
+
+void swiotlb_unmap_notify(unsigned long paddr, unsigned long size)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_1_1_smc(SMC_TSI_SEC_MEM_UNMAP, paddr, size, &res);
+}

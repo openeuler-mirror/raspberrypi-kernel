@@ -68,6 +68,13 @@
  */
 #define SMC_TSI_DEVICE_CERT                 SMC_TSI_FID(0x19A)
 
+/*
+ * arg0: Paddr of rd
+ * arg1: Paddr of memory to unmap
+ * arg2: Size of memory to unmap
+ */
+ #define SMC_TSI_SEC_MEM_UNMAP              SMC_TSI_FID(0x19C)
+
 static inline unsigned long tsi_get_version(void)
 {
 	struct arm_smccc_res res;
