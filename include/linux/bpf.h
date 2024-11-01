@@ -294,7 +294,6 @@ struct bpf_map {
 	 * same prog type, JITed flag and xdp_has_frags flag.
 	 */
 	struct {
-		const struct btf_type *attach_func_proto;
 		spinlock_t lock;
 		enum bpf_prog_type type;
 		bool jited;
@@ -307,7 +306,7 @@ struct bpf_map {
 	s64 __percpu *elem_count;
 
 	KABI_USE(1, atomic64_t sleepable_refcnt)
-	KABI_RESERVE(2)
+	KABI_USE(2, const struct btf_type *attach_func_proto)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 };
