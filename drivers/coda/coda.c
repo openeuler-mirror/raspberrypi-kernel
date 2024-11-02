@@ -127,6 +127,7 @@ static int add_cc_dev_obj(u32 sid, u32 vmid, u32 root_bd, bool secure)
 			obj->vmid = vmid;
 			obj->root_bd = root_bd;
 			obj->secure = secure;
+			obj->msi_addr = 0;
 			return 0;
 		}
 	}
@@ -281,6 +282,8 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 			for (i = 0; i < master->num_streams; i++) {
 				u32 sid = master->streams[i].id;
 
+				cmd[0] = 0;
+				cmd[1] = 0;
 				for (j = 0; j < i; j++)
 					if (master->streams[j].id == sid)
 						break;

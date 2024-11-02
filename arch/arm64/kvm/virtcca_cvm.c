@@ -960,11 +960,8 @@ static int kvm_cvm_dev_ttt_create(struct virtcca_cvm *cvm,
 }
 
 /* CVM create ttt level information about device */
-int kvm_cvm_create_dev_ttt_levels(struct kvm *kvm, struct virtcca_cvm *cvm,
-			unsigned long ipa,
-			int level,
-			int max_level,
-			struct kvm_mmu_memory_cache *mc)
+static int kvm_cvm_create_dev_ttt_levels(struct kvm *kvm, struct virtcca_cvm *cvm,
+	unsigned long ipa, int level, int max_level, struct kvm_mmu_memory_cache *mc)
 {
 	int ret = 0;
 

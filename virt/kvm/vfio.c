@@ -406,7 +406,7 @@ void kvm_vfio_ops_exit(void)
  * cvm_vfio_add_kvm_to_smmu_domain - Bind the confidential
  * virtual machine to smmu domain
  * @filp: The handle of file
- * @kvm: The kvm belone to confidential virtual machine
+ * @kv: The kvm_vfio belong to confidential virtual machine
  *
  * Returns:
  * %-ENXIO if set kvm failed or iommu group is null
@@ -512,8 +512,8 @@ EXPORT_SYMBOL_GPL(virtcca_arm_smmu_get_kvm);
 
 /**
  * find_arm_smmu_domain - Find smmu domain list from kvm vfio file
- * @kvf: Kvm vfio file
- * @smmu_domain_group_list: List of smmu domain group
+ * @dev: The handle of device
+ * @data: List of smmu domain group
  */
 int find_arm_smmu_domain(struct device *dev, void *data)
 {
