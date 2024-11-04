@@ -17,8 +17,6 @@
 
 #include "../../../kernel/dma/direct.h"
 
-bool is_zhaoxin_kh40000;
-
 /***
  * usage:
  *  set "zhaoxin_patch_bitmask=<value>" in cmdline
@@ -32,7 +30,7 @@ enum {
 
 #define ZHAOXIN_PATCH_CODE_DEFAULT	ZHAOXIN_P2CW_NODE_CHECK
 
-unsigned long zhaoxin_patch_code = ZHAOXIN_PATCH_CODE_DEFAULT;
+static unsigned long zhaoxin_patch_code = ZHAOXIN_PATCH_CODE_DEFAULT;
 
 static int __init zhaoxin_patch_code_setup(char *str)
 {
@@ -44,7 +42,7 @@ static int __init zhaoxin_patch_code_setup(char *str)
 		return err;
 	}
 
-	if (ZHAOXIN_P2CW_NODE_CHECK | zhaoxin_patch_code)
+	if (ZHAOXIN_P2CW_NODE_CHECK & zhaoxin_patch_code)
 		pr_info("zhaoxin dma patch node check is enabled\n");
 
 	return 0;
@@ -176,6 +174,11 @@ const struct dma_map_ops kh40000_dma_direct_ops = {
 	.map_sg			= dma_direct_map_sg,
 	.map_resource		= dma_direct_map_resource,
 };
+
+const struct dma_map_ops *kh40000_get_direct_dma_ops(void)
+{
+	return &kh40000_dma_direct_ops;
+}
 
 /* zhaoxin kh-40000 iommu dma ops */
 static const struct dma_map_ops *iommu_dma_ops;
@@ -319,7 +322,7 @@ static size_t kh40000_iommu_dma_opt_mapping_size(void)
 	return iommu_dma_ops->opt_mapping_size();
 }
 
-const struct dma_map_ops kh40000_dma_iommu_ops = {
+static const struct dma_map_ops kh40000_dma_iommu_ops = {
 	.flags			= DMA_F_PCI_P2PDMA_SUPPORTED,
 	.alloc			= kh40000_iommu_dma_alloc,
 	.free			= kh40000_iommu_dma_free,
