@@ -129,7 +129,7 @@ bool is_virtcca_iova_need_vfio_dma(struct kvm *kvm, uint64_t iova);
 #define CVM_L2_BLOCK_SIZE	BIT(CVM_TTT_LEVEL_SHIFT(2))
 
 #define TMM_GRANULE_SIZE2		12
-#define TMM_TTT_WIDTH			19
+#define TMM_TTT_WIDTH			9
 #define TMM_GRANULE_SIZE		(1UL << TMM_GRANULE_SIZE2)
 #define tmm_granule_size(level)	(TMM_GRANULE_SIZE << ((3 - level)) * TMM_TTT_WIDTH)
 
