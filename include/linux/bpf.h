@@ -306,7 +306,7 @@ struct bpf_map {
 	s64 __percpu *elem_count;
 
 	KABI_USE(1, atomic64_t sleepable_refcnt)
-	KABI_RESERVE(2)
+	KABI_USE(2, const struct btf_type *attach_func_proto)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 };
