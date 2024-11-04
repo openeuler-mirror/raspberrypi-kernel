@@ -36,5 +36,7 @@ nbl_core-objs +=       nbl_common/nbl_common.o \
 # in your own .h private.
 #
 # Try not to break these rules, sincerely.
-ccflags-y := -I $(src) -I $(src)/nbl_include -I $(src)/nbl_export -I $(src)/nbl_hw
+ccflags-y += -I$(srctree)/$(src)
+ccflags-y += -I$(srctree)/drivers/net/ethernet/nebula-matrix/nbl/nbl_include/
+ccflags-y += -I$(srctree)/drivers/net/ethernet/nebula-matrix/nbl/nbl_hw
 

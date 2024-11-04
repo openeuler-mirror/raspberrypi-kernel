@@ -35,7 +35,6 @@
 #include <net/bonding.h>
 #include <linux/if_bridge.h>
 #include <linux/rtnetlink.h>
-#include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/dma-map-ops.h>
 #include <linux/dma-mapping.h>
