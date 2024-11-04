@@ -711,12 +711,10 @@ struct vm_area_struct {
 	KABI_RESERVE(4)
 } __randomize_layout;
 
-#ifdef CONFIG_SCHED_MM_CID
 struct mm_cid {
 	u64 time;
 	int cid;
 };
-#endif
 
 struct kioctx_table;
 struct iommu_mm_data;
@@ -789,6 +787,10 @@ struct mm_struct {
 		 * When the next mm_cid scan is due (in jiffies).
 		 */
 		unsigned long mm_cid_next_scan;
+#else
+		KABI_REPLACE(struct mm_cid __percpu *pcpu_cid,
+				struct mm_cid __percpu *pcpu_cid)
+		KABI_REPLACE(unsigned long mm_cid_next_scan, unsigned long mm_cid_next_scan)
 #endif
 #ifdef CONFIG_MMU
 		atomic_long_t pgtables_bytes;	/* size of all page tables */

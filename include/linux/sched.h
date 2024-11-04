@@ -1355,6 +1355,13 @@ struct task_struct {
 	int				migrate_from_cpu;
 	int				mm_cid_active;	/* Whether cid bitmap is active */
 	struct callback_head		cid_work;
+#else
+	KABI_REPLACE(int mm_cid, int mm_cid)
+	KABI_REPLACE(int last_mm_cid, int last_mm_cid)
+	KABI_REPLACE(int migrate_from_cpu, int migrate_from_cpu)
+	KABI_REPLACE(int mm_cid_active, int mm_cid_active)
+	KABI_REPLACE(struct callback_head cid_work,
+			struct callback_head cid_work)
 #endif
 
 	struct tlbflush_unmap_batch	tlb_ubc;

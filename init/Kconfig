@@ -1137,7 +1137,7 @@ config QOS_SCHED_DYNAMIC_AFFINITY
 	 cpus allowed.
 
 config SCHED_MM_CID
-	def_bool y
+	def_bool n
 	depends on SMP && RSEQ
 
 config UCLAMP_TASK_GROUP
