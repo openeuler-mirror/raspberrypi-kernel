@@ -349,3 +349,18 @@ u64 tmi_dev_ttt_create(u64 numa_set, u64 rd, u64 map_addr, u64 level)
 	return res.a1;
 }
 
+u64 tmi_kae_init(void)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_1_1_smc(TMI_TMM_KAE_INIT, &res);
+	return res.a1;
+}
+
+u64 tmi_kae_enable(u64 rd, u64 numa_set, u64 is_enable)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_1_1_smc(TMI_TMM_KAE_ENABLE, rd, numa_set, is_enable, &res);
+	return res.a1;
+}
