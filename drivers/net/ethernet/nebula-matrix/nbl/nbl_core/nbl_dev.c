@@ -401,7 +401,7 @@ static int nbl_dev_request_abnormal_irq(struct nbl_dev_mgt *dev_mgt)
 	return 0;
 }
 
-void nbl_dev_free_abnormal_irq(struct nbl_dev_mgt *dev_mgt)
+static void nbl_dev_free_abnormal_irq(struct nbl_dev_mgt *dev_mgt)
 {
 	struct device *dev = NBL_DEV_MGT_TO_DEV(dev_mgt);
 	struct nbl_dev_common *dev_common = NBL_DEV_MGT_TO_COMMON_DEV(dev_mgt);
@@ -1703,7 +1703,7 @@ static void nbl_dev_remove_ethtool_ops(struct net_device *netdev)
 	netdev->ethtool_ops = NULL;
 }
 
-void nbl_dev_set_eth_mac_addr(struct nbl_dev_mgt *dev_mgt, struct net_device *netdev)
+static void nbl_dev_set_eth_mac_addr(struct nbl_dev_mgt *dev_mgt, struct net_device *netdev)
 {
 	struct nbl_service_ops *serv_ops = NBL_DEV_MGT_TO_SERV_OPS(dev_mgt);
 	struct nbl_common_info *common = NBL_DEV_MGT_TO_COMMON(dev_mgt);
@@ -1773,7 +1773,9 @@ static int nbl_dev_register_net(struct nbl_dev_mgt *dev_mgt,
 {
 	struct nbl_service_ops *serv_ops = NBL_DEV_MGT_TO_SERV_OPS(dev_mgt);
 	struct pci_dev *pdev = NBL_COMMON_TO_PDEV(NBL_DEV_MGT_TO_COMMON(dev_mgt));
+#ifdef CONFIG_PCI_IOV
 	struct resource *res;
+#endif
 	u16 pf_bdf;
 	u64 pf_bar_start;
 	u64 vf_bar_start, vf_bar_size;
@@ -1802,10 +1804,12 @@ static int nbl_dev_register_net(struct nbl_dev_mgt *dev_mgt,
 		vf_bar_start = (u64)(val & PCI_BASE_ADDRESS_MEM_MASK);
 		pci_read_config_dword(pdev, pos + PCI_SRIOV_BAR + 4, &val);
 		vf_bar_start |= ((u64)val << 32);
-
+#ifdef CONFIG_PCI_IOV
 		res = &pdev->resource[PCI_IOV_RESOURCES];
 		vf_bar_size = resource_size(res);
-
+#else
+		vf_bar_size = 0;
+#endif
 		if (total_vfs) {
 			register_param.pf_bdf = pf_bdf;
 			register_param.vf_bar_start = vf_bar_start;
@@ -1825,7 +1829,7 @@ static int nbl_dev_register_net(struct nbl_dev_mgt *dev_mgt,
 	return ret;
 }
 
-void nbl_dev_unregister_net(struct nbl_adapter *adapter)
+static void nbl_dev_unregister_net(struct nbl_adapter *adapter)
 {
 	struct nbl_service_ops_tbl *serv_ops_tbl = NBL_ADAPTER_TO_SERV_OPS_TBL(adapter);
 	struct device *dev = NBL_ADAPTER_TO_DEV(adapter);
@@ -2406,14 +2410,12 @@ static void nbl_dev_remove_net_dev(struct nbl_adapter *adapter)
 	struct device *dev = NBL_ADAPTER_TO_DEV(adapter);
 	struct nbl_dev_mgt *dev_mgt = NBL_ADAPTER_TO_DEV_MGT(adapter);
 	struct nbl_dev_net **net_dev = &NBL_DEV_MGT_TO_NET_DEV(dev_mgt);
-	struct net_device *netdev;
 	struct nbl_dev_vsi *vsi;
 	int i = 0;
 
 	if (!*net_dev)
 		return;
 
-	netdev = (*net_dev)->netdev;
 
 	for (i = 0; i < NBL_VSI_MAX; i++) {
 		vsi = (*net_dev)->vsi_ctrl.vsi_list[i];
@@ -2743,13 +2745,11 @@ static void nbl_dev_stop_net_dev(struct nbl_adapter *adapter)
 	struct nbl_event_callback callback = {0};
 	struct nbl_dev_vsi *vsi;
 	struct net_device *netdev;
-	struct nbl_netdev_priv *net_priv;
 
 	if (!net_dev)
 		return;
 
 	netdev = net_dev->netdev;
-	net_priv = netdev_priv(netdev);
 
 	vsi = net_dev->vsi_ctrl.vsi_list[NBL_VSI_DATA];
 	if (!vsi)
@@ -2923,7 +2923,7 @@ config_msix_map_err:
 	return ret;
 }
 
-void nbl_dev_stop_common_dev(struct nbl_adapter *adapter)
+static void nbl_dev_stop_common_dev(struct nbl_adapter *adapter)
 {
 	struct nbl_dev_mgt *dev_mgt = (struct nbl_dev_mgt *)NBL_ADAPTER_TO_DEV_MGT(adapter);
 
@@ -2953,7 +2953,7 @@ static int nbl_dev_resume_common_dev(struct nbl_adapter *adapter, struct nbl_ini
 	return 0;
 }
 
-void nbl_dev_suspend_common_dev(struct nbl_adapter *adapter)
+static void nbl_dev_suspend_common_dev(struct nbl_adapter *adapter)
 {
 	struct nbl_dev_mgt *dev_mgt = (struct nbl_dev_mgt *)NBL_ADAPTER_TO_DEV_MGT(adapter);
 

@@ -72,11 +72,13 @@ static void nbl_res_adminq_add_cmd_filter_res_write(struct nbl_resource_mgt *res
 {
 	struct nbl_adminq_mgt *adminq_mgt = NBL_RES_MGT_TO_ADMINQ_MGT(res_mgt);
 	struct nbl_common_info *common = NBL_RES_MGT_TO_COMMON(res_mgt);
-	struct nbl_res_fw_cmd_filter filter = {0};
+	struct nbl_res_fw_cmd_filter filter = {
+		.in = nbl_res_fw_cmd_filter_rw_in,
+		.out = NULL,
+	};
 	u16 key = 0;
 
 	key = NBL_CHAN_MSG_ADMINQ_RESOURCE_WRITE;
-	filter.in = nbl_res_fw_cmd_filter_rw_in;
 
 	if (nbl_common_alloc_hash_node(adminq_mgt->cmd_filter, &key, &filter))
 		nbl_warn(common, NBL_DEBUG_ADMINQ, "Fail to register res_write in filter");
@@ -1571,7 +1573,7 @@ static int nbl_res_adminq_pt_filter_out(struct nbl_resource_mgt *res_mgt,
 	if (filter && filter->out)
 		ret = filter->out(res_mgt, param->data, param->out_size);
 
-	return 0;
+	return ret;
 }
 
 static int nbl_res_adminq_passthrough(void *priv, struct nbl_passthrough_fw_cmd_param *param,
