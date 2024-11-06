@@ -2846,13 +2846,15 @@ static void nbl_phy_disable_rx_err_report(struct pci_dev *pdev)
 #define  NBL_BAD_TLP_BIT	6
 #define  NBL_BAD_DLLP_BIT	7
 	u8 mask = 0;
+	int pos = 0;
 
-	if (!pdev->aer_cap)
+	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_ERR);
+	if (!pos)
 		return;
 
-	pci_read_config_byte(pdev, pdev->aer_cap + PCI_ERR_COR_MASK, &mask);
+	pci_read_config_byte(pdev, pos + PCI_ERR_COR_MASK, &mask);
 	mask |= BIT(NBL_RX_ERR_BIT) | BIT(NBL_BAD_TLP_BIT) | BIT(NBL_BAD_DLLP_BIT);
-	pci_write_config_byte(pdev, pdev->aer_cap + PCI_ERR_COR_MASK, mask);
+	pci_write_config_byte(pdev, pos + PCI_ERR_COR_MASK, mask);
 }
 
 int nbl_phy_init_leonis(void *p, struct nbl_init_param *param)

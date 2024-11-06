@@ -34,8 +34,8 @@ void nbl_core_stop(struct nbl_adapter *adapter)
 	nbl_dev_stop(adapter);
 }
 
-void nbl_core_setup_product_ops(struct nbl_adapter *adapter, struct nbl_init_param *param,
-				struct nbl_product_base_ops **product_base_ops)
+static void nbl_core_setup_product_ops(struct nbl_adapter *adapter, struct nbl_init_param *param,
+				       struct nbl_product_base_ops **product_base_ops)
 {
 	adapter->product_base_ops = &nbl_product_base_ops[param->product_type];
 	*product_base_ops = adapter->product_base_ops;
@@ -120,14 +120,12 @@ phy_init_fail:
 void nbl_core_remove(struct nbl_adapter *adapter)
 {
 	struct device *dev;
-	struct nbl_common_info *common;
 	struct nbl_product_base_ops *product_base_ops;
 
 	if (!adapter)
 		return;
 
 	dev = NBL_ADAPTER_TO_DEV(adapter);
-	common = NBL_ADAPTER_TO_COMMON(adapter);
 	product_base_ops = NBL_ADAPTER_TO_RPDUCT_BASE_OPS(adapter);
 
 	nbl_debugfs_func_remove(adapter);
@@ -418,7 +416,7 @@ static const struct pci_device_id nbl_id_table[] = {
 };
 MODULE_DEVICE_TABLE(pci, nbl_id_table);
 
-static int nbl_suspend(struct device *dev)
+static int __maybe_unused nbl_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct nbl_adapter *adapter = pci_get_drvdata(pdev);
@@ -426,7 +424,7 @@ static int nbl_suspend(struct device *dev)
 	return nbl_dev_suspend(adapter);
 }
 
-static int nbl_resume(struct device *dev)
+static int __maybe_unused nbl_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct nbl_adapter *adapter = pci_get_drvdata(pdev);
@@ -435,6 +433,7 @@ static int nbl_resume(struct device *dev)
 }
 
 static SIMPLE_DEV_PM_OPS(nbl_pm_ops, nbl_suspend, nbl_resume);
+
 static struct pci_driver nbl_driver = {
 	.name = NBL_DRIVER_NAME,
 	.id_table = nbl_id_table,
