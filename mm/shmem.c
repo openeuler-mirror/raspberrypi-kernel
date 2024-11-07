@@ -1968,10 +1968,10 @@ static int shmem_replace_folio(struct folio **foliop, gfp_t gfp,
 		mem_cgroup_replace_folio(old, new);
 		__lruvec_stat_mod_folio(new, NR_FILE_PAGES, nr_pages);
 		__lruvec_stat_mod_folio(new, NR_SHMEM, nr_pages);
-		shmem_reliable_folio_add(new, 1);
+		shmem_reliable_folio_add(new, nr_pages);
 		__lruvec_stat_mod_folio(old, NR_FILE_PAGES, -nr_pages);
 		__lruvec_stat_mod_folio(old, NR_SHMEM, -nr_pages);
-		shmem_reliable_folio_add(old, -1);
+		shmem_reliable_folio_add(old, -nr_pages);
 	}
 	xa_unlock_irq(&swap_mapping->i_pages);
 
