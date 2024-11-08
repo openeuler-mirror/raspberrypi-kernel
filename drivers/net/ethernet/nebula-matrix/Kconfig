@@ -21,6 +21,7 @@ config NBL_CORE
     depends on PCI && VFIO
     depends on ARM64 || X86_64
     default m
+    select PLDMFW
     help
       This driver supports Nebula-matrix Ethernet Controller m18110 Family of
       devices.  For more information about this product, go to the product

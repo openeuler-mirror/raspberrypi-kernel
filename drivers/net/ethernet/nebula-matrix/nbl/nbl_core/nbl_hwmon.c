@@ -124,6 +124,7 @@ static const struct hwmon_chip_info nbl_hwmon_chip_info = {
 
 int nbl_dev_setup_hwmon(struct nbl_adapter *adapter)
 {
+#if defined(CONFIG_HWMON) || (defined(MODULE) && defined(CONFIG_HWMON_MODULE))
 	struct nbl_dev_mgt *dev_mgt = (struct nbl_dev_mgt *)NBL_ADAPTER_TO_DEV_MGT(adapter);
 	struct nbl_dev_common *common_dev = NBL_DEV_MGT_TO_COMMON_DEV(dev_mgt);
 	struct device *dev = NBL_DEV_MGT_TO_DEV(dev_mgt);
@@ -132,13 +133,18 @@ int nbl_dev_setup_hwmon(struct nbl_adapter *adapter)
 								&nbl_hwmon_chip_info, NULL);
 
 	return PTR_ERR_OR_ZERO(common_dev->hwmon_dev);
+#else
+	return 0;
+#endif
 }
 
 void nbl_dev_remove_hwmon(struct nbl_adapter *adapter)
 {
+#if defined(CONFIG_HWMON) || (defined(MODULE) && defined(CONFIG_HWMON_MODULE))
 	struct nbl_dev_mgt *dev_mgt = (struct nbl_dev_mgt *)NBL_ADAPTER_TO_DEV_MGT(adapter);
 	struct nbl_dev_common *common_dev = NBL_DEV_MGT_TO_COMMON_DEV(dev_mgt);
 
 	if (common_dev->hwmon_dev)
 		hwmon_device_unregister(common_dev->hwmon_dev);
+#endif
 }
