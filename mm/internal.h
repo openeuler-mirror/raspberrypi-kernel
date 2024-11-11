@@ -1446,4 +1446,14 @@ void __meminit __init_single_page(struct page *page, unsigned long pfn,
 #ifdef CONFIG_PAGE_CACHE_LIMIT
 unsigned long shrink_memory(unsigned long nr_to_reclaim, bool may_swap);
 #endif /* CONFIG_PAGE_CACHE_LIMIT */
+
+struct unlink_vma_file_batch {
+	int count;
+	struct vm_area_struct *vmas[8];
+};
+
+void unlink_file_vma_batch_init(struct unlink_vma_file_batch *);
+void unlink_file_vma_batch_add(struct unlink_vma_file_batch *, struct vm_area_struct *);
+void unlink_file_vma_batch_final(struct unlink_vma_file_batch *);
+
 #endif	/* __MM_INTERNAL_H */
