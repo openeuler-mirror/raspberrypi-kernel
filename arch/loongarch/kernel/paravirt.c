@@ -129,10 +129,17 @@ static u64 paravt_steal_clock(int cpu)
 }
 
 #ifdef CONFIG_SMP
+static struct smp_ops native_ops;
+
 static void pv_send_ipi_single(int cpu, unsigned int action)
 {
 	unsigned int min, old;
 	irq_cpustat_t *info = &per_cpu(irq_stat, cpu);
+
+	if (unlikely(action == ACTION_BOOT_CPU)) {
+		native_ops.send_ipi_single(cpu, action);
+		return;
+	}
 
 	old = atomic_fetch_or(BIT(action), &info->message);
 	if (old)
@@ -151,6 +158,11 @@ static void pv_send_ipi_mask(const struct cpumask *mask, unsigned int action)
 
 	if (cpumask_empty(mask))
 		return;
+
+	if (unlikely(action == ACTION_BOOT_CPU)) {
+		native_ops.send_ipi_mask(mask, action);
+		return;
+	}
 
 	action = BIT(action);
 	for_each_cpu(i, mask) {
@@ -213,6 +225,8 @@ static void pv_init_ipi(void)
 {
 	int r, swi0;
 
+	/* Init native ipi irq for ACTION_BOOT_CPU */
+	native_ops.init_ipi();
 	swi0 = get_percpu_irq(INT_SWI0);
 	if (swi0 < 0)
 		panic("SWI0 IRQ mapping failed\n");
@@ -285,6 +299,7 @@ int __init pv_ipi_init(void)
 		return 0;
 
 #ifdef CONFIG_SMP
+	native_ops		= mp_ops;
 	smp_ops.init_ipi		= pv_init_ipi;
 	smp_ops.send_ipi_single		= pv_send_ipi_single;
 	smp_ops.send_ipi_mask		= pv_send_ipi_mask;
