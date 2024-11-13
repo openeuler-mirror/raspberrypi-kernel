@@ -67,7 +67,7 @@ bool virtcca_pci_write_msg_msi(struct msi_desc *desc, struct msi_msg *msg)
 
 	if (unmasked)
 		pci_msix_write_vector_ctrl(desc, ctrl);
-	tmi_mmio_read(mmio_va_to_pa((void *)pbase + PCI_MSIX_ENTRY_DATA),
+	tmi_mmio_read(pbase + PCI_MSIX_ENTRY_DATA,
 		CVM_RW_32_BIT, pci_dev_id(pdev));
 
 	return true;
