@@ -210,7 +210,7 @@ fentry_trace_func(struct trace_fprobe *tf, unsigned long entry_ip,
 }
 NOKPROBE_SYMBOL(fentry_trace_func);
 
-/* Kretprobe handler */
+/* function exit handler */
 static nokprobe_inline void
 __fexit_trace_func(struct trace_fprobe *tf, unsigned long entry_ip,
 		   unsigned long ret_ip, struct pt_regs *regs,
@@ -389,7 +389,7 @@ static struct trace_fprobe *alloc_trace_fprobe(const char *group,
 	tf->tpoint = tpoint;
 	tf->fp.nr_maxactive = maxactive;
 
-	ret = trace_probe_init(&tf->tp, event, group, false);
+	ret = trace_probe_init(&tf->tp, event, group, false, nargs);
 	if (ret < 0)
 		goto error;
 
@@ -1086,6 +1086,10 @@ static int __trace_fprobe_create(int argc, const char *argv[])
 		argc = new_argc;
 		argv = new_argv;
 	}
+	if (argc > MAX_TRACE_ARGS) {
+		ret = -E2BIG;
+		goto out;
+	}
 
 	ret = traceprobe_expand_dentry_args(argc, argv, &dbuf);
 	if (ret)
@@ -1106,7 +1110,7 @@ static int __trace_fprobe_create(int argc, const char *argv[])
 				(unsigned long)tf->tpoint->probestub);
 
 	/* parse arguments */
-	for (i = 0; i < argc && i < MAX_TRACE_ARGS; i++) {
+	for (i = 0; i < argc; i++) {
 		trace_probe_log_set_index(i + 2);
 		ctx.offset = 0;
 		ret = traceprobe_parse_probe_arg(&tf->tp, i, argv[i], &ctx);
