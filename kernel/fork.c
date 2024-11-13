@@ -1192,6 +1192,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->prefer_cpus = NULL;
 #endif
 
+#ifdef CONFIG_QOS_SCHED_SMART_GRID
+	tsk->grid_qos = NULL;
+#endif
+
 	setup_thread_stack(tsk, orig);
 	clear_user_return_notifier(tsk);
 	clear_tsk_need_resched(tsk);
