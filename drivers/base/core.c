@@ -32,6 +32,7 @@
 #include <linux/swiotlb.h>
 #include <linux/sysfs.h>
 #include <linux/dma-map-ops.h> /* for dma_default_coherent */
+#include <linux/virtcca_cvm_domain.h>
 
 #include "base.h"
 #include "physical_location.h"
@@ -3137,6 +3138,7 @@ void device_initialize(struct device *dev)
 	dev->dma_coherent = dma_default_coherent;
 #endif
 	swiotlb_dev_init(dev);
+	enable_swiotlb_for_cvm_dev(dev, false);
 }
 EXPORT_SYMBOL_GPL(device_initialize);
 

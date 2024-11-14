@@ -29,6 +29,7 @@
 #include <linux/virtio_pci_modern.h>
 #include <linux/highmem.h>
 #include <linux/spinlock.h>
+#include <linux/virtcca_cvm_domain.h>
 
 struct virtio_pci_vq_info {
 	/* the actual virtqueue */

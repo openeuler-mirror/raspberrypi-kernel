@@ -32,6 +32,7 @@
 #ifdef CONFIG_HISI_VIRTCCA_GUEST
 #include <linux/swiotlb.h>
 #include <asm/virtcca_cvm_guest.h>
+#include <linux/virtcca_cvm_domain.h>
 #endif
 
 #include <linux/irqchip.h>
@@ -6191,6 +6192,7 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 #ifdef CONFIG_HISI_VIRTCCA_GUEST
 	if (is_virtcca_cvm_world()) {
 		device_initialize(&cvm_alloc_device);
+		enable_swiotlb_for_cvm_dev(&cvm_alloc_device, true);
 		raw_spin_lock_init(&cvm_its_lock);
 	}
 #endif
