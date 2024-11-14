@@ -13,6 +13,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/kmsan.h>
 #include <linux/spinlock.h>
+#include <linux/virtcca_cvm_domain.h>
 #include <xen/xen.h>
 
 #ifdef DEBUG
@@ -294,6 +295,8 @@ static bool vring_use_dma_api(const struct virtio_device *vdev)
 	if (xen_domain())
 		return true;
 
+	if (virtcca_cvm_domain())
+		return true;
 	return false;
 }
 
