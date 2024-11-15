@@ -268,6 +268,7 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 	unsigned long flags;
 	int i, j;
 	struct arm_smmu_master *master;
+	struct arm_smmu_master_domain *master_domain;
 	int ret = 0;
 	u64 cmd[CMDQ_ENT_DWORDS] = {0};
 	struct virtcca_cvm *virtcca_cvm = kvm->arch.virtcca_cvm;
@@ -277,7 +278,8 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 	 * Traverse all devices under the secure smmu domain and
 	 * set the correspnding address translation table for each device
 	 */
-	list_for_each_entry(master, &arm_smmu_domain->devices, domain_head) {
+	list_for_each_entry(master_domain, &arm_smmu_domain->devices, devices_elm) {
+		master = master_domain->master;
 		if (master && master->num_streams >= 0) {
 			for (i = 0; i < master->num_streams; i++) {
 				u32 sid = master->streams[i].id;
