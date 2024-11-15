@@ -43,6 +43,11 @@ struct linux_binprm {
 		 * original userspace.
 		 */
 		point_of_no_return:1;
+	/*
+	 * Set by user space to check executability according to the
+	 * caller's environment.
+	 */
+	KABI_FILL_HOLE(unsigned int is_check:1)
 	struct file *executable; /* Executable to pass to the interpreter */
 	struct file *interpreter;
 	struct file *file;

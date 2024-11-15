@@ -198,6 +198,7 @@ struct audit_context {
 		struct open_how openat2;
 		struct {
 			int			argc;
+			KABI_FILL_HOLE(bool is_check)
 		} execve;
 		struct {
 			char			*name;
