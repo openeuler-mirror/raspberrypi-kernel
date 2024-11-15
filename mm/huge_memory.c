@@ -1115,7 +1115,7 @@ unsigned long thp_get_unmapped_area(struct file *filp, unsigned long addr,
 	unsigned long ret;
 	loff_t off = (loff_t)pgoff << PAGE_SHIFT;
 
-	if (filp || thp_anon_mapping_align()) {
+	if (filp || (thp_anon_mapping_align() && IS_ALIGNED(len, PMD_SIZE))) {
 		ret = __thp_get_unmapped_area(filp, addr, len, off, flags,
 					      PMD_SIZE);
 		if (ret)
@@ -1125,7 +1125,7 @@ unsigned long thp_get_unmapped_area(struct file *filp, unsigned long addr,
 	if (mthp_mapping_align_enabled(filp)) {
 		int order = arch_wants_exec_folio_order();
 
-		if (order >= 0) {
+		if (order >= 0 && IS_ALIGNED(len, PAGE_SIZE << order)) {
 			ret = __thp_get_unmapped_area(filp, addr, len, off,
 					flags, PAGE_SIZE << order);
 			if (ret)
