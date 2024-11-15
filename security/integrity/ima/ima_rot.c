@@ -14,6 +14,7 @@
 #include <linux/gfp_types.h>
 
 #include "ima.h"
+#include "ima_tpm.h"
 
 static const char *name_rot_prefered;
 
@@ -24,6 +25,14 @@ static const char *name_rot_prefered;
  * IOW, RoT device that owns higher priority should be placed at the front.
  */
 static struct ima_rot ima_rots[] = {
+#ifdef CONFIG_TCG_TPM
+	{
+		.name = "tpm",
+		.init = ima_tpm_init,
+		.extend = ima_tpm_extend,
+		.calc_boot_aggregate = ima_tpm_calc_boot_aggregate,
+	},
+#endif
 };
 
 static int __init ima_rot_name(char *str)

@@ -21,6 +21,7 @@
 #include <crypto/hash.h>
 
 #include "ima.h"
+#include "ima_tpm.h"
 
 /* minimum file size for ahash use */
 static unsigned long ima_ahash_minsize;
@@ -775,15 +776,6 @@ int ima_calc_buffer_hash(const void *buf, loff_t len,
 	}
 
 	return calc_buffer_shash(buf, len, hash);
-}
-
-static void ima_pcrread(u32 idx, struct tpm_digest *d)
-{
-	if (!ima_tpm_chip)
-		return;
-
-	if (tpm_pcr_read(ima_tpm_chip, idx, d) != 0)
-		pr_err("Error Communicating to TPM chip\n");
 }
 
 /*
