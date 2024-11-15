@@ -19,11 +19,10 @@
 #include <generated/utsrelease.h>
 
 #include "ima.h"
-#include "ima_cvm.h"
 
 /* name for boot aggregate entry */
 const char boot_aggregate_name[] = "boot_aggregate";
-struct tpm_chip *ima_tpm_chip;
+struct ima_rot *ima_rot_inst;
 
 /* Add the boot aggregate to the IMA measurement list and extend
  * the PCR register.
@@ -58,16 +57,6 @@ static int __init ima_add_boot_aggregate(void)
 	iint->ima_hash->algo = ima_hash_algo;
 	iint->ima_hash->length = hash_digest_size[ima_hash_algo];
 
-#ifdef CONFIG_HISI_VIRTCCA_GUEST
-	if (ima_cvm_available()) {
-		result = ima_calc_cvm_boot_aggregate(&hash.hdr);
-		if (result < 0) {
-			audit_cause = "hashing_error";
-			goto err_out;
-		}
-	}
-#endif
-
 	/*
 	 * With TPM 2.0 hash agility, TPM chips could support multiple TPM
 	 * PCR banks, allowing firmware to configure and enable different
@@ -80,8 +69,8 @@ static int __init ima_add_boot_aggregate(void)
 	 * Ultimately select SHA1 also for TPM 2.0 if the SHA256 PCR bank
 	 * is not found.
 	 */
-	if (ima_tpm_chip) {
-		result = ima_calc_boot_aggregate(&hash.hdr);
+	if (ima_rot_inst) {
+		result = ima_rot_inst->calc_boot_aggregate(&hash.hdr);
 		if (result < 0) {
 			audit_cause = "hashing_error";
 			goto err_out;
@@ -132,17 +121,9 @@ int __init ima_init(void)
 {
 	int rc;
 
-#ifdef CONFIG_HISI_VIRTCCA_GUEST
-	rc = ima_cvm_init();
-	if (rc) {
-		pr_info("No CVM found, activating CVM-bypass!\n");
-		ima_tpm_chip = tpm_default_chip();
-	}
-#else
-	ima_tpm_chip = tpm_default_chip();
-#endif
-	if (!ima_tpm_chip)
-		pr_info("No TPM chip found, activating TPM-bypass!\n");
+	ima_rot_inst = ima_rot_init();
+	if (!ima_rot_inst)
+		pr_info("No RoT found, activating RoT-bypass!\n");
 
 	rc = integrity_init_keyring(INTEGRITY_KEYRING_IMA);
 	if (rc)

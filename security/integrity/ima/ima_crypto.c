@@ -21,6 +21,7 @@
 #include <crypto/hash.h>
 
 #include "ima.h"
+#include "ima_tpm.h"
 
 /* minimum file size for ahash use */
 static unsigned long ima_ahash_minsize;
@@ -99,7 +100,7 @@ static struct crypto_shash *ima_alloc_tfm(enum hash_algo algo)
 	if (algo == ima_hash_algo)
 		return tfm;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++)
+	for (i = 0; i < NR_BANKS(ima_rot_inst) + ima_extra_slots; i++)
 		if (ima_algo_array[i].tfm && ima_algo_array[i].algo == algo)
 			return ima_algo_array[i].tfm;
 
@@ -125,8 +126,8 @@ int __init ima_init_crypto(void)
 	ima_sha1_idx = -1;
 	ima_hash_algo_idx = -1;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip); i++) {
-		algo = ima_tpm_chip->allocated_banks[i].crypto_id;
+	for (i = 0; i < NR_BANKS(ima_rot_inst); i++) {
+		algo = ima_rot_inst->allocated_banks[i].crypto_id;
 		if (algo == HASH_ALGO_SHA1)
 			ima_sha1_idx = i;
 
@@ -135,23 +136,23 @@ int __init ima_init_crypto(void)
 	}
 
 	if (ima_sha1_idx < 0) {
-		ima_sha1_idx = NR_BANKS(ima_tpm_chip) + ima_extra_slots++;
+		ima_sha1_idx = NR_BANKS(ima_rot_inst) + ima_extra_slots++;
 		if (ima_hash_algo == HASH_ALGO_SHA1)
 			ima_hash_algo_idx = ima_sha1_idx;
 	}
 
 	if (ima_hash_algo_idx < 0)
-		ima_hash_algo_idx = NR_BANKS(ima_tpm_chip) + ima_extra_slots++;
+		ima_hash_algo_idx = NR_BANKS(ima_rot_inst) + ima_extra_slots++;
 
-	ima_algo_array = kcalloc(NR_BANKS(ima_tpm_chip) + ima_extra_slots,
+	ima_algo_array = kcalloc(NR_BANKS(ima_rot_inst) + ima_extra_slots,
 				 sizeof(*ima_algo_array), GFP_KERNEL);
 	if (!ima_algo_array) {
 		rc = -ENOMEM;
 		goto out;
 	}
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip); i++) {
-		algo = ima_tpm_chip->allocated_banks[i].crypto_id;
+	for (i = 0; i < NR_BANKS(ima_rot_inst); i++) {
+		algo = ima_rot_inst->allocated_banks[i].crypto_id;
 		ima_algo_array[i].algo = algo;
 
 		/* unknown TPM algorithm */
@@ -175,7 +176,7 @@ int __init ima_init_crypto(void)
 		}
 	}
 
-	if (ima_sha1_idx >= NR_BANKS(ima_tpm_chip)) {
+	if (ima_sha1_idx >= NR_BANKS(ima_rot_inst)) {
 		if (ima_hash_algo == HASH_ALGO_SHA1) {
 			ima_algo_array[ima_sha1_idx].tfm = ima_shash_tfm;
 		} else {
@@ -190,7 +191,7 @@ int __init ima_init_crypto(void)
 		ima_algo_array[ima_sha1_idx].algo = HASH_ALGO_SHA1;
 	}
 
-	if (ima_hash_algo_idx >= NR_BANKS(ima_tpm_chip) &&
+	if (ima_hash_algo_idx >= NR_BANKS(ima_rot_inst) &&
 	    ima_hash_algo_idx != ima_sha1_idx) {
 		ima_algo_array[ima_hash_algo_idx].tfm = ima_shash_tfm;
 		ima_algo_array[ima_hash_algo_idx].algo = ima_hash_algo;
@@ -198,7 +199,7 @@ int __init ima_init_crypto(void)
 
 	return 0;
 out_array:
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++) {
+	for (i = 0; i < NR_BANKS(ima_rot_inst) + ima_extra_slots; i++) {
 		if (!ima_algo_array[i].tfm ||
 		    ima_algo_array[i].tfm == ima_shash_tfm)
 			continue;
@@ -218,7 +219,7 @@ static void ima_free_tfm(struct crypto_shash *tfm)
 	if (tfm == ima_shash_tfm)
 		return;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++)
+	for (i = 0; i < NR_BANKS(ima_rot_inst) + ima_extra_slots; i++)
 		if (ima_algo_array[i].tfm == tfm)
 			return;
 
@@ -636,12 +637,12 @@ int ima_calc_field_array_hash(struct ima_field_data *field_data,
 
 	entry->digests[ima_sha1_idx].alg_id = TPM_ALG_SHA1;
 
-	for (i = 0; i < NR_BANKS(ima_tpm_chip) + ima_extra_slots; i++) {
+	for (i = 0; i < NR_BANKS(ima_rot_inst) + ima_extra_slots; i++) {
 		if (i == ima_sha1_idx)
 			continue;
 
-		if (i < NR_BANKS(ima_tpm_chip)) {
-			alg_id = ima_tpm_chip->allocated_banks[i].alg_id;
+		if (i < NR_BANKS(ima_rot_inst)) {
+			alg_id = ima_rot_inst->allocated_banks[i].alg_id;
 			entry->digests[i].alg_id = alg_id;
 		}
 
@@ -777,15 +778,6 @@ int ima_calc_buffer_hash(const void *buf, loff_t len,
 	return calc_buffer_shash(buf, len, hash);
 }
 
-static void ima_pcrread(u32 idx, struct tpm_digest *d)
-{
-	if (!ima_tpm_chip)
-		return;
-
-	if (tpm_pcr_read(ima_tpm_chip, idx, d) != 0)
-		pr_err("Error Communicating to TPM chip\n");
-}
-
 /*
  * The boot_aggregate is a cumulative hash over TPM registers 0 - 7.  With
  * TPM 1.2 the boot_aggregate was based on reading the SHA1 PCRs, but with
@@ -847,8 +839,8 @@ int ima_calc_boot_aggregate(struct ima_digest_data *hash)
 	u16 crypto_id, alg_id;
 	int rc, i, bank_idx = -1;
 
-	for (i = 0; i < ima_tpm_chip->nr_allocated_banks; i++) {
-		crypto_id = ima_tpm_chip->allocated_banks[i].crypto_id;
+	for (i = 0; i < NR_BANKS(ima_rot_inst); i++) {
+		crypto_id = ima_rot_inst->allocated_banks[i].crypto_id;
 		if (crypto_id == hash->algo) {
 			bank_idx = i;
 			break;
@@ -866,14 +858,14 @@ int ima_calc_boot_aggregate(struct ima_digest_data *hash)
 		return 0;
 	}
 
-	hash->algo = ima_tpm_chip->allocated_banks[bank_idx].crypto_id;
+	hash->algo = ima_rot_inst->allocated_banks[bank_idx].crypto_id;
 
 	tfm = ima_alloc_tfm(hash->algo);
 	if (IS_ERR(tfm))
 		return PTR_ERR(tfm);
 
 	hash->length = crypto_shash_digestsize(tfm);
-	alg_id = ima_tpm_chip->allocated_banks[bank_idx].alg_id;
+	alg_id = ima_rot_inst->allocated_banks[bank_idx].alg_id;
 	rc = ima_calc_boot_aggregate_tfm(hash->digest, alg_id, tfm);
 
 	ima_free_tfm(tfm);
