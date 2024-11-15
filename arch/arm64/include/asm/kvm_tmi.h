@@ -67,9 +67,9 @@ struct tmi_tec_params {
 };
 
 struct tmi_smmu_ste_params {
-	uint64_t ns_src;     /* non-secure STE source address */
 	uint64_t sid;        /* stream id */
 	uint64_t smmu_id;    /* smmu id */
+	uint16_t smmu_vmid;  /* smmu vmid */
 };
 
 struct tmi_smmu_cfg_params {

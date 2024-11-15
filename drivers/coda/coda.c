@@ -327,17 +327,15 @@ static int virtcca_secure_dev_ste_create(struct arm_smmu_device *smmu,
 	struct arm_smmu_master *master, u32 sid)
 {
 	struct tmi_smmu_ste_params *params_ptr;
-	struct arm_smmu_strtab_cfg *cfg = &smmu->strtab_cfg;
-	struct arm_smmu_strtab_l1_desc *desc = &cfg->l1_desc[sid >> STRTAB_SPLIT];
 
 	params_ptr = kzalloc(sizeof(*params_ptr), GFP_KERNEL);
 	if (!params_ptr)
 		return -ENOMEM;
 
 	/* Sync Level 2 STE to TMM */
-	params_ptr->ns_src = desc->l2ptr_dma + ((sid & ((1 << STRTAB_SPLIT) - 1)) * STE_ENTRY_SIZE);
 	params_ptr->sid = sid;
 	params_ptr->smmu_id = smmu->s_smmu_id;
+	params_ptr->smmu_vmid = master->domain->s2_cfg.vmid;
 
 	if (tmi_smmu_ste_create(__pa(params_ptr)) != 0) {
 		kfree(params_ptr);
