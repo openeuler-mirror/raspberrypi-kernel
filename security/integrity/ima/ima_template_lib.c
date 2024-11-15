@@ -356,7 +356,7 @@ int ima_eventdigest_init(struct ima_event_data *event_data,
 	}
 
 	if ((const char *)event_data->filename == boot_aggregate_name) {
-		if (ima_tpm_chip) {
+		if (ima_rot_inst) {
 			hash.hdr.algo = HASH_ALGO_SHA1;
 			result = ima_calc_boot_aggregate(&hash.hdr);
 

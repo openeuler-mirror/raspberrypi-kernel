@@ -17,6 +17,5 @@ int ima_tpm_extend(struct tpm_digest *digests_arg, const void *args);
 int ima_tpm_calc_boot_aggregate(struct ima_digest_data *hash);
 
 void ima_pcrread(u32 idx, struct tpm_digest *d);
-int ima_pcr_extend(struct tpm_digest *digests_arg, int pcr);
 
 #endif /* __LINUX_IMA_IMA_TPM_H */

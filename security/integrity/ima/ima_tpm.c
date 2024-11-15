@@ -14,7 +14,7 @@
 
 #include "ima.h"
 
-struct tpm_chip *ima_tpm_chip;
+static struct tpm_chip *ima_tpm_chip;
 
 void ima_pcrread(u32 idx, struct tpm_digest *d)
 {
@@ -25,7 +25,7 @@ void ima_pcrread(u32 idx, struct tpm_digest *d)
 		pr_err("Error Communicating to TPM chip\n");
 }
 
-int ima_pcr_extend(struct tpm_digest *digests_arg, int pcr)
+static int ima_pcr_extend(struct tpm_digest *digests_arg, int pcr)
 {
 	int result = 0;
 
