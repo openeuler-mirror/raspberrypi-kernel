@@ -15,6 +15,7 @@
 
 #include "ima.h"
 #include "ima_tpm.h"
+#include "ima_virtcca.h"
 
 static const char *name_rot_prefered;
 
@@ -31,6 +32,14 @@ static struct ima_rot ima_rots[] = {
 		.init = ima_tpm_init,
 		.extend = ima_tpm_extend,
 		.calc_boot_aggregate = ima_tpm_calc_boot_aggregate,
+	},
+#endif
+#ifdef CONFIG_HISI_VIRTCCA_GUEST
+	{
+		.name = "virtcca",
+		.init = ima_virtcca_init,
+		.extend = ima_virtcca_extend,
+		.calc_boot_aggregate = ima_calc_virtcca_boot_aggregate,
 	},
 #endif
 };

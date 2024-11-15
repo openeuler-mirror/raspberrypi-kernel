@@ -19,7 +19,6 @@
 #include <generated/utsrelease.h>
 
 #include "ima.h"
-#include "ima_virtcca.h"
 
 /* name for boot aggregate entry */
 const char boot_aggregate_name[] = "boot_aggregate";
@@ -57,16 +56,6 @@ static int __init ima_add_boot_aggregate(void)
 	iint->ima_hash = &hash.hdr;
 	iint->ima_hash->algo = ima_hash_algo;
 	iint->ima_hash->length = hash_digest_size[ima_hash_algo];
-
-#ifdef CONFIG_HISI_VIRTCCA_GUEST
-	if (ima_virtcca_available()) {
-		result = ima_calc_virtcca_boot_aggregate(&hash.hdr);
-		if (result < 0) {
-			audit_cause = "hashing_error";
-			goto err_out;
-		}
-	}
-#endif
 
 	/*
 	 * With TPM 2.0 hash agility, TPM chips could support multiple TPM
@@ -132,15 +121,7 @@ int __init ima_init(void)
 {
 	int rc;
 
-#ifdef CONFIG_HISI_VIRTCCA_GUEST
-	rc = ima_virtcca_init();
-	if (rc) {
-		pr_info("No CVM found, activating CVM-bypass!\n");
-		ima_rot_inst = ima_rot_init();
-	}
-#else
 	ima_rot_inst = ima_rot_init();
-#endif
 	if (!ima_rot_inst)
 		pr_info("No RoT found, activating RoT-bypass!\n");
 

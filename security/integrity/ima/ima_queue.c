@@ -18,7 +18,6 @@
 #include <linux/rculist.h>
 #include <linux/slab.h>
 #include "ima.h"
-#include "ima_virtcca.h"
 
 #define AUDIT_CAUSE_LEN_MAX 32
 
@@ -175,24 +174,13 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 	if (violation)		/* invalidate pcr */
 		digests_arg = digests;
 
-#ifdef CONFIG_HISI_VIRTCCA_GUEST
-	rotresult = ima_virtcca_extend(digests_arg);
+	if (ima_rot_inst)
+		rotresult = ima_rot_inst->extend(digests_arg, &entry->pcr);
 	if (rotresult != 0) {
-		snprintf(rot_audit_cause, AUDIT_CAUSE_LEN_MAX, "TSI_error(%d)",
-			 rotresult);
+		snprintf(rot_audit_cause, AUDIT_CAUSE_LEN_MAX, "%s_error(%d)",
+			 ima_rot_inst->name, rotresult);
 		audit_cause = rot_audit_cause;
 		audit_info = 0;
-	}
-#endif
-
-	if (ima_rot_inst) {
-		rotresult = ima_rot_inst->extend(digests_arg, &entry->pcr);
-		if (rotresult != 0) {
-			snprintf(rot_audit_cause, AUDIT_CAUSE_LEN_MAX, "%s_error(%d)",
-				 ima_rot_inst->name, rotresult);
-			audit_cause = rot_audit_cause;
-			audit_info = 0;
-		}
 	}
 out:
 	mutex_unlock(&ima_extend_list_mutex);

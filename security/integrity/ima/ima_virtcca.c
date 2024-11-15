@@ -4,43 +4,65 @@
  */
 #include <asm/virtcca_cvm_smc.h>
 #include <asm/virtcca_cvm_guest.h>
-#include "ima_virtcca.h"
+#include "ima.h"
 
-static bool ima_tsi_cvm;
+#define CVM_IMA_SLOT_IDX 1
 
-bool ima_virtcca_available(void)
+static enum hash_algo virtcca_algo;
+
+static int ima_virtcca_init_algo(void)
 {
-	return ima_tsi_cvm;
-}
+	unsigned long result;
+	struct virtcca_cvm_config cfg = { 0 };
 
-int __init ima_virtcca_init(void)
-{
-	int rc = -ENODEV;
-
-	if (is_virtcca_cvm_world() && tsi_get_version() != SMCCC_RET_NOT_SUPPORTED) {
-		ima_tsi_cvm = true;
-		rc = 0;
+	result = tsi_get_cvm_config(&cfg);
+	if (result != TSI_SUCCESS) {
+		pr_info("Error reading cvm config\n");
+		return -EFAULT;
 	}
 
-	return rc;
+	/* 0: SHA256, 1: SHA512 */
+	virtcca_algo = cfg.algorithm ? HASH_ALGO_SHA512 : HASH_ALGO_SHA256;
+
+	return 0;
+}
+
+int ima_virtcca_init(struct ima_rot *rot)
+{
+	int rc;
+
+	if (!is_virtcca_cvm_world() || tsi_get_version() == SMCCC_RET_NOT_SUPPORTED)
+		return -ENODEV;
+
+	rc = ima_virtcca_init_algo();
+	if (rc)
+		return rc;
+
+	if (virtcca_algo != ima_hash_algo) {
+		pr_info("VirtCCA's algo (%s) is different from ima_hash_algo (%s)\n",
+				hash_algo_name[virtcca_algo], hash_algo_name[ima_hash_algo]);
+
+		rot->allocated_banks = kcalloc(1, sizeof(*rot->allocated_banks), GFP_KERNEL);
+		if (!rot->allocated_banks)
+			return -ENOMEM;
+
+		rot->nr_allocated_banks = 1;
+		rot->allocated_banks[0].alg_id = (virtcca_algo == HASH_ALGO_SHA512) ?
+						 TPM_ALG_SHA512 : TPM_ALG_SHA256;
+		rot->allocated_banks[0].digest_size = hash_digest_size[virtcca_algo];
+		rot->allocated_banks[0].crypto_id = virtcca_algo;
+	}
+
+	return 0;
 }
 
 int ima_calc_virtcca_boot_aggregate(struct ima_digest_data *hash)
 {
 	unsigned long result;
-	int hash_len;
-	struct virtcca_cvm_config cfg = { 0 };
 	struct virtcca_cvm_measurement cm = { 0 };
 
-	result = tsi_get_cvm_config(&cfg);
-	if (result != TSI_SUCCESS) {
-		pr_err("Error reading cvm config for boot aggregate\n");
-		return -EFAULT;
-	}
-
-	/* 0: SHA256, 1: SHA512 */
-	hash->algo = cfg.algorithm ? HASH_ALGO_SHA512 : HASH_ALGO_SHA256;
-	hash_len = hash_digest_size[hash->algo];
+	hash->algo = virtcca_algo;
+	hash->length = hash_digest_size[virtcca_algo];
 
 	/* Read the measurement result of RIM as the boot aggregate */
 	cm.index = RIM_MEASUREMENT_SLOT;
@@ -51,25 +73,21 @@ int ima_calc_virtcca_boot_aggregate(struct ima_digest_data *hash)
 		return -EFAULT;
 	}
 
-	memcpy(hash->digest, cm.value, hash_len);
+	memcpy(hash->digest, cm.value, hash->length);
 
 	return 0;
 }
 
-int ima_virtcca_extend(struct tpm_digest *digests_arg)
+int ima_virtcca_extend(struct tpm_digest *digests_arg, const void *args)
 {
 	struct virtcca_cvm_measurement_extend cme;
+	int algo_idx = (virtcca_algo != ima_hash_algo) ? 0 : ima_hash_algo_idx;
 
-	if (!ima_tsi_cvm)
-		return 0;
-
-	/* Use index 1 as CVM IMA slot */
-	cme.index = 1;
-	cme.size = hash_digest_size[ima_hash_algo];
+	cme.index = CVM_IMA_SLOT_IDX;
+	cme.size = hash_digest_size[virtcca_algo];
 
 	if (digests_arg)
-		memcpy(cme.value, digests_arg[ima_hash_algo_idx].digest,
-		       cme.size);
+		memcpy(cme.value, digests_arg[algo_idx].digest, cme.size);
 	else
 		memset(cme.value, 0xff, cme.size);
 
