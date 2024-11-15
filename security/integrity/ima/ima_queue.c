@@ -18,7 +18,7 @@
 #include <linux/rculist.h>
 #include <linux/slab.h>
 #include "ima.h"
-#include "ima_cvm.h"
+#include "ima_virtcca.h"
 
 #define AUDIT_CAUSE_LEN_MAX 32
 
@@ -176,7 +176,7 @@ int ima_add_template_entry(struct ima_template_entry *entry, int violation,
 		digests_arg = digests;
 
 #ifdef CONFIG_HISI_VIRTCCA_GUEST
-	rotresult = ima_cvm_extend(digests_arg);
+	rotresult = ima_virtcca_extend(digests_arg);
 	if (rotresult != 0) {
 		snprintf(rot_audit_cause, AUDIT_CAUSE_LEN_MAX, "TSI_error(%d)",
 			 rotresult);

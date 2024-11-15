@@ -4,16 +4,16 @@
  */
 #include <asm/virtcca_cvm_smc.h>
 #include <asm/virtcca_cvm_guest.h>
-#include "ima_cvm.h"
+#include "ima_virtcca.h"
 
 static bool ima_tsi_cvm;
 
-bool ima_cvm_available(void)
+bool ima_virtcca_available(void)
 {
 	return ima_tsi_cvm;
 }
 
-int __init ima_cvm_init(void)
+int __init ima_virtcca_init(void)
 {
 	int rc = -ENODEV;
 
@@ -25,7 +25,7 @@ int __init ima_cvm_init(void)
 	return rc;
 }
 
-int ima_calc_cvm_boot_aggregate(struct ima_digest_data *hash)
+int ima_calc_virtcca_boot_aggregate(struct ima_digest_data *hash)
 {
 	unsigned long result;
 	int hash_len;
@@ -56,7 +56,7 @@ int ima_calc_cvm_boot_aggregate(struct ima_digest_data *hash)
 	return 0;
 }
 
-int ima_cvm_extend(struct tpm_digest *digests_arg)
+int ima_virtcca_extend(struct tpm_digest *digests_arg)
 {
 	struct virtcca_cvm_measurement_extend cme;
 

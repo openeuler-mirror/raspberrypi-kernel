@@ -21,4 +21,4 @@ ifeq ($(CONFIG_EFI),y)
 ima-$(CONFIG_IMA_SECURE_AND_OR_TRUSTED_BOOT) += ima_efi.o
 endif
 
-ima-$(CONFIG_HISI_VIRTCCA_GUEST) += ima_cvm.o
+ima-$(CONFIG_HISI_VIRTCCA_GUEST) += ima_virtcca.o
