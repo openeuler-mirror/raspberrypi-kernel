@@ -31,6 +31,8 @@ enum virtcca_cvm_state {
 	CVM_STATE_DYING
 };
 
+#define MAX_KAE_VF_NUM	11
+
 /*
  * Many of these fields are smaller than u64 but all fields have u64
  * alignment, so use u64 to ensure correct alignment.
@@ -50,6 +52,9 @@ struct tmi_cvm_params {
 	s64	ttt_level_start;
 	u64	ttt_num_start;
 	u8	rpv[64]; /* Bits 512 */
+	u64	kae_vf_num;
+	u64	sec_addr[MAX_KAE_VF_NUM];
+	u64	hpre_addr[MAX_KAE_VF_NUM];
 };
 
 struct cvm {

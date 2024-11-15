@@ -231,6 +231,8 @@ struct tmi_tec_run {
 #define TMI_FNUM_TTT_MAP_RANGE          U(0x26D)
 #define TMI_FNUM_TTT_UNMAP_RANGE        U(0x26E)
 #define TMI_FNUM_INF_TEST               U(0x270)
+#define TMI_FNUM_KAE_INIT               U(0x273)
+#define TMI_FNUM_KAE_ENABLE             U(0x274)
 
 #define TMI_FNUM_SMMU_QUEUE_CREATE      U(0x277)
 #define TMI_FNUM_SMMU_QUEUE_WRITE       U(0x278)
@@ -265,6 +267,8 @@ struct tmi_tec_run {
 #define TMI_TMM_TTT_MAP_RANGE           TMI_FID(SMC_64, TMI_FNUM_TTT_MAP_RANGE)
 #define TMI_TMM_TTT_UNMAP_RANGE         TMI_FID(SMC_64, TMI_FNUM_TTT_UNMAP_RANGE)
 #define TMI_TMM_INF_TEST                TMI_FID(SMC_64, TMI_FNUM_INF_TEST)
+#define TMI_TMM_KAE_INIT                TMI_FID(SMC_64, TMI_FNUM_KAE_INIT)
+#define TMI_TMM_KAE_ENABLE              TMI_FID(SMC_64, TMI_FNUM_KAE_ENABLE)
 
 #define TMI_TMM_SMMU_QUEUE_CREATE       TMI_FID(SMC_64, TMI_FNUM_SMMU_QUEUE_CREATE)
 #define TMI_TMM_SMMU_QUEUE_WRITE        TMI_FID(SMC_64, TMI_FNUM_SMMU_QUEUE_WRITE)
@@ -304,6 +308,9 @@ struct tmi_tec_run {
 #define KVM_CAP_ARM_TMM_CFG_SVE					2
 #define KVM_CAP_ARM_TMM_CFG_DBG					3
 #define KVM_CAP_ARM_TMM_CFG_PMU					4
+#define KVM_CAP_ARM_TMM_CFG_KAE					5
+
+#define KVM_CAP_ARM_TMM_MAX_KAE_VF_NUM		11
 
 DECLARE_STATIC_KEY_FALSE(virtcca_cvm_is_available);
 
@@ -334,6 +341,13 @@ struct kvm_cap_arm_tmm_config_item {
 		/* cfg == KVM_CAP_ARM_TMM_CFG_PMU */
 		struct {
 			__u32	num_pmu_cntrs;
+		};
+
+		/* cfg == KVM_CAP_ARM_TMM_CFG_KAE */
+		struct {
+			__u32	kae_vf_num;
+			__u64	sec_addr[KVM_CAP_ARM_TMM_MAX_KAE_VF_NUM];
+			__u64	hpre_addr[KVM_CAP_ARM_TMM_MAX_KAE_VF_NUM];
 		};
 		/* Fix the size of the union */
 		__u8	reserved[256];
@@ -397,6 +411,8 @@ u64 tmi_smmu_device_reset(u64 params);
 u64 tmi_smmu_pcie_core_check(u64 smmu_base);
 u64 tmi_smmu_write(u64 smmu_base, u64 reg_offset, u64 val, u64 bits);
 u64 tmi_smmu_read(u64 smmu_base, u64 reg_offset, u64 bits);
+u64 tmi_kae_init(void);
+u64 tmi_kae_enable(u64 rd, u64 numa_set, u64 is_enable);
 
 u64 mmio_va_to_pa(void *addr);
 void kvm_cvm_vcpu_put(struct kvm_vcpu *vcpu);
