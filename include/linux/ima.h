@@ -63,6 +63,11 @@ static inline int ima_bprm_check(struct linux_binprm *bprm)
 	return 0;
 }
 
+static inline int ima_bprm_creds_for_exec(struct linux_binprm *bprm)
+{
+	return 0;
+}
+
 static inline int ima_file_check(struct file *file, int mask)
 {
 	return 0;
