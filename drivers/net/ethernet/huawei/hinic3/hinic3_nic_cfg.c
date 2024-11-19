@@ -20,26 +20,22 @@
 #include "hinic3_nic_io.h"
 #include "hinic3_srv_nic.h"
 #include "hinic3_nic.h"
+#include "hinic3_nic_cmdq.h"
 #include "hinic3_nic_cmd.h"
 #include "hinic3_common.h"
 #include "hinic3_nic_cfg.h"
 
-int hinic3_set_ci_table(void *hwdev, struct hinic3_sq_attr *attr)
+int hinic3_set_sq_ci_ctx(struct hinic3_nic_io *nic_io, struct hinic3_sq_attr *attr)
 {
 	struct hinic3_cmd_cons_idx_attr cons_idx_attr;
 	u16 out_size = sizeof(cons_idx_attr);
-	struct hinic3_nic_io *nic_io = NULL;
 	int err;
 
-	if (!hwdev || !attr)
+	if (!nic_io || !attr)
 		return -EINVAL;
 
 	memset(&cons_idx_attr, 0, sizeof(cons_idx_attr));
-
-	nic_io = hinic3_get_service_adapter(hwdev, SERVICE_T_NIC);
-
-	cons_idx_attr.func_idx = hinic3_global_func_id(hwdev);
-
+	cons_idx_attr.func_idx = hinic3_global_func_id(nic_io->hwdev);
 	cons_idx_attr.dma_attr_off  = attr->dma_attr_off;
 	cons_idx_attr.pending_limit = attr->pending_limit;
 	cons_idx_attr.coalescing_time  = attr->coalescing_time;
@@ -50,15 +46,45 @@ int hinic3_set_ci_table(void *hwdev, struct hinic3_sq_attr *attr)
 	}
 
 	cons_idx_attr.l2nic_sqn = attr->l2nic_sqn;
-	cons_idx_attr.ci_addr = attr->ci_dma_base;
+	cons_idx_attr.ci_addr = attr->ci_dma_base >> SQ_CI_ADDR_SHIFT;
 
-	err = l2nic_msg_to_mgmt_sync(hwdev, HINIC3_NIC_CMD_SQ_CI_ATTR_SET,
+	err = l2nic_msg_to_mgmt_sync(nic_io->hwdev, HINIC3_NIC_CMD_SQ_CI_ATTR_SET,
 				     &cons_idx_attr, sizeof(cons_idx_attr),
 				     &cons_idx_attr, &out_size);
 	if (err || !out_size || cons_idx_attr.msg_head.status) {
-		sdk_err(nic_io->dev_hdl,
+		nic_err(nic_io->dev_hdl,
 			"Failed to set ci attribute table, err: %d, status: 0x%x, out_size: 0x%x\n",
 			err, cons_idx_attr.msg_head.status, out_size);
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+int hinic3_set_rq_ci_ctx(struct hinic3_nic_io *nic_io, struct hinic3_rq_attr *attr)
+{
+	struct hinic3_rq_cqe_ctx cons_idx_ctx;
+	u16 out_size = sizeof(cons_idx_ctx);
+	int err;
+
+	if (!nic_io || !attr)
+		return -EINVAL;
+
+	memset(&cons_idx_ctx, 0, sizeof(cons_idx_ctx));
+	cons_idx_ctx.cqe_type = attr->cqe_type;
+	cons_idx_ctx.rq_id = (u8)(attr->l2nic_rqn & 0xff);
+	cons_idx_ctx.timer_loop = attr->coalescing_time;
+	cons_idx_ctx.threshold_cqe_num = attr->pending_limit;
+	cons_idx_ctx.msix_entry_idx = attr->intr_idx;
+	cons_idx_ctx.ci_addr_hi = upper_32_bits(attr->ci_dma_base >> RQ_CI_ADDR_SHIFT);
+	cons_idx_ctx.ci_addr_lo = lower_32_bits(attr->ci_dma_base >> RQ_CI_ADDR_SHIFT);
+
+	err = l2nic_msg_to_mgmt_sync(nic_io->hwdev, HINIC3_NIC_CMD_SET_RQ_CI_CTX,
+				     &cons_idx_ctx, sizeof(cons_idx_ctx),
+				     &cons_idx_ctx, &out_size);
+	if (err || !out_size || cons_idx_ctx.msg_head.status) {
+		nic_err(nic_io->dev_hdl, "Set rq cqe ctx fail, qid: %d, err: %d, status: 0x%x, out_size: 0x%x",
+			attr->l2nic_rqn, err, cons_idx_ctx.msg_head.status, out_size);
 		return -EFAULT;
 	}
 
@@ -1024,6 +1050,7 @@ int hinic3_init_nic_hwdev(void *hwdev, void *pcidev_hdl, void *dev_hdl,
 	}
 
 	sdk_info(dev_hdl, "nic features: 0x%llx\n", nic_io->feature_cap);
+	hinic3_nic_cmdq_adapt_init(nic_io);
 
 	err = hinic3_get_bios_pf_bw_limit(hwdev, &nic_io->nic_cfg.pf_bw_limit);
 	if (err) {

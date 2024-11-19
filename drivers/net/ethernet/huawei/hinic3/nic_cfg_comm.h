@@ -12,6 +12,8 @@
 #ifndef NIC_CFG_COMM_H
 #define NIC_CFG_COMM_H
 
+#include <linux/types.h>
+
 /* rss */
 #define HINIC3_RSS_TYPE_VALID_SHIFT 23
 #define HINIC3_RSS_TYPE_TCP_IPV6_EXT_SHIFT 24
@@ -51,7 +53,7 @@ enum nic_rss_hash_type {
 #define NIC_DCB_TC_MAX          0x8
 #define NIC_DCB_PG_MAX          0x8
 #define NIC_DCB_TSA_SP          0x0
-#define NIC_DCB_TSA_CBS         0x1   /* hi1822 do NOT support */
+#define NIC_DCB_TSA_CBS         0x1
 #define NIC_DCB_TSA_ETS         0x2
 #define NIC_DCB_DSCP_NUM        0x8
 #define NIC_DCB_IP_PRI_MAX      0x40

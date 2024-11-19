@@ -38,22 +38,29 @@ struct hinic3_io_queue {
 	u16 msix_entry_idx;
 
 	u8 __iomem *db_addr;
-
-	union {
-		struct {
-			void *cons_idx_addr;
-		} tx;
-
-		struct {
-			u16 *pi_virt_addr;
-			dma_addr_t pi_dma_addr;
-		} rx;
-	};
+	void *cons_idx_addr;
 } ____cacheline_aligned;
 
 struct hinic3_nic_db {
 	u32 db_info;
 	u32 pi_hi;
+};
+
+struct hinic3_tx_rx_ops {
+	void (*rx_get_cqe_info)(void *rx_cqe, void *cqe_info);
+	bool (*rx_cqe_done)(void *rxq, void **rx_cqe);
+};
+
+struct hinic3_rq_ci_wb {
+	union {
+		struct {
+			u16 cqe_num;
+			u16 hw_ci;
+		} bs;
+		u32 value;
+	} dw0;
+
+	u32 rsvd[3];
 };
 
 #ifdef static
@@ -110,7 +117,23 @@ static inline u16 hinic3_get_sq_local_pi(const struct hinic3_io_queue *sq)
 static inline u16 hinic3_get_sq_hw_ci(const struct hinic3_io_queue *sq)
 {
 	return WQ_MASK_IDX(&sq->wq,
-			   hinic3_hw_cpu16(*(u16 *)sq->tx.cons_idx_addr));
+			   hinic3_hw_cpu16(*(u16 *)sq->cons_idx_addr));
+}
+
+/* *
+ * @brief hinic3_get_rq_hw_ci - get recv queue hardware consumer index
+ * @param rq: recv queue
+ * @retval : hardware consumer index
+ */
+static inline u16 hinic3_get_rq_hw_ci(const struct hinic3_io_queue *rq)
+{
+	u16 hw_ci;
+	u32 rq_ci_wb;
+
+	rq_ci_wb = hinic3_hw_cpu32(*(u32 *)rq->cons_idx_addr);
+	hw_ci = ((struct hinic3_rq_ci_wb *) &rq_ci_wb)->dw0.bs.hw_ci;
+
+	return WQ_MASK_IDX(&rq->wq, hw_ci);
 }
 
 /* *
@@ -211,17 +234,6 @@ static inline void hinic3_rollback_sq_wqebbs(struct hinic3_io_queue *sq,
 static inline void *hinic3_rq_wqe_addr(struct hinic3_io_queue *rq, u16 idx)
 {
 	return hinic3_wq_wqebb_addr(&rq->wq, idx);
-}
-
-/* *
- * @brief hinic3_update_rq_hw_pi - update receive queue hardware pi
- * @param rq: receive queue
- * @param pi: pi
- */
-static inline void hinic3_update_rq_hw_pi(struct hinic3_io_queue *rq, u16 pi)
-{
-	*rq->rx.pi_virt_addr = cpu_to_be16((pi & rq->wq.idx_mask) <<
-					   rq->wqe_type);
 }
 
 /* *

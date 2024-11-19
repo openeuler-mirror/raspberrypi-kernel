@@ -150,6 +150,10 @@ void hinic3_rxq_get_stats(struct hinic3_rxq *rxq,
 
 void hinic3_rxq_clean_stats(struct hinic3_rxq_stats *rxq_stats);
 
+void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info);
+
+void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info);
+
 void hinic3_rxq_check_work_handler(struct work_struct *work);
 
 #endif

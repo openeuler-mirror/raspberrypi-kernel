@@ -593,6 +593,24 @@ static void reschedule_eq_handler(struct hinic3_eq *eq)
 	}
 }
 
+int hinic3_reschedule_eq(struct hinic3_hwdev *hwdev, enum hinic3_eq_type type,
+			 u16 eq_id)
+{
+	if (type == HINIC3_AEQ) {
+		if (eq_id >= hwdev->aeqs->num_aeqs)
+			return -EINVAL;
+
+		reschedule_eq_handler(&(hwdev->aeqs->aeq[eq_id]));
+	} else {
+		if (eq_id >= hwdev->ceqs->num_ceqs)
+			return -EINVAL;
+
+		reschedule_eq_handler(&(hwdev->ceqs->ceq[eq_id]));
+	}
+
+	return 0;
+}
+
 /**
  * eq_irq_handler - handler for the eq event
  * @data: the event queue of the event

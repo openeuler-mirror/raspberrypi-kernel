@@ -267,12 +267,15 @@ int hinic3_func_reset(void *dev, u16 func_id, u64 reset_flag, u16 channel)
 }
 EXPORT_SYMBOL(hinic3_func_reset);
 
-static u16 get_hw_rx_buf_size(int rx_buf_sz)
+static u16 get_hw_rx_buf_size(const void *hwdev, int rx_buf_sz)
 {
 	u16 num_hw_types =
 		sizeof(hinic3_hw_rx_buf_size) /
 		sizeof(hinic3_hw_rx_buf_size[0]);
 	u16 i;
+
+	if (COMM_IS_USE_REAL_RX_BUF_SIZE((struct hinic3_hwdev *)hwdev))
+		return rx_buf_sz;
 
 	for (i = 0; i < num_hw_types; i++) {
 		if (hinic3_hw_rx_buf_size[i] == rx_buf_sz)
@@ -303,7 +306,7 @@ int hinic3_set_root_ctxt(void *hwdev, u32 rq_depth, u32 sq_depth, int rx_buf_sz,
 	root_ctxt.lro_en = 1;
 
 	root_ctxt.rq_depth  = (u16)ilog2(rq_depth);
-	root_ctxt.rx_buf_sz = get_hw_rx_buf_size(rx_buf_sz);
+	root_ctxt.rx_buf_sz = get_hw_rx_buf_size(hwdev, rx_buf_sz);
 	root_ctxt.sq_depth  = (u16)ilog2(sq_depth);
 
 	err = comm_msg_to_mgmt_sync_ch(hwdev, COMM_MGMT_CMD_SET_VAT,
@@ -357,6 +360,10 @@ int hinic3_set_cmdq_depth(void *hwdev, u16 cmdq_depth)
 
 	root_ctxt.set_cmdq_depth = 1;
 	root_ctxt.cmdq_depth = (u8)ilog2(cmdq_depth);
+	root_ctxt.cmdq_mode = ((struct hinic3_hwdev *)hwdev)->cmdq_mode;
+
+	if (((struct hinic3_hwdev *)hwdev)->cmdq_mode == HINIC3_ENHANCE_CMDQ)
+		root_ctxt.cmdq_depth--;
 
 	err = comm_msg_to_mgmt_sync(hwdev, COMM_MGMT_CMD_SET_VAT, &root_ctxt,
 				    sizeof(root_ctxt), &root_ctxt, &out_size);
@@ -364,6 +371,30 @@ int hinic3_set_cmdq_depth(void *hwdev, u16 cmdq_depth)
 		sdk_err(((struct hinic3_hwdev *)hwdev)->dev_hdl,
 			"Failed to set cmdq depth, err: %d, status: 0x%x, out_size: 0x%x\n",
 			err, root_ctxt.head.status, out_size);
+		return -EFAULT;
+	}
+
+	return 0;
+}
+
+int hinic3_set_enhance_cmdq_ctxt(struct hinic3_hwdev *hwdev, u8 cmdq_id,
+				 struct enhance_cmdq_ctxt_info *ctxt)
+{
+	struct comm_cmd_enhance_cmdq_ctxt cmdq_ctxt;
+	u16 out_size = sizeof(cmdq_ctxt);
+	int err;
+
+	memset(&cmdq_ctxt, 0, sizeof(cmdq_ctxt));
+	memcpy(&cmdq_ctxt.ctxt, ctxt, sizeof(*ctxt));
+	cmdq_ctxt.func_id = hinic3_global_func_id(hwdev);
+	cmdq_ctxt.cmdq_id = cmdq_id;
+
+	err = comm_msg_to_mgmt_sync(hwdev, COMM_MGMT_CMD_SET_ENHANCE_CMDQ_CTXT,
+				    &cmdq_ctxt, sizeof(cmdq_ctxt),
+				    &cmdq_ctxt, &out_size);
+	if ((err != 0) || (out_size == 0) || (cmdq_ctxt.head.status != 0)) {
+		sdk_err(hwdev->dev_hdl, "Failed to set enhanced cmdq ctxt, err: %d, status: 0x%x, out_size: 0x%x\n",
+			err, cmdq_ctxt.head.status, out_size);
 		return -EFAULT;
 	}
 

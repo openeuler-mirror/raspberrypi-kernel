@@ -2,6 +2,8 @@
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/hw/
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/cqm/
+ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/adapter/hw_cmdq/
+ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/adapter/sw_cmdq/
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/include/
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/include/cqm/
 ccflags-y += -I$(srctree)/drivers/net/ethernet/huawei/hinic3/include/public/
@@ -31,10 +33,14 @@ hinic3-objs := hw/hinic3_hwdev.o \
 			hw/hinic3_hw_mt.o \
 			hw/hinic3_nictool.o \
 			hw/hinic3_devlink.o \
+			hw/hinic3_cmdq_enhance.o \
 			hw/ossl_knl_linux.o \
 			hw/hinic3_multi_host_mgmt.o \
+			adapter/hw_cmdq/hw_cmdq_ops.o \
+			adapter/sw_cmdq/sw_cmdq_ops.o \
 			bond/hinic3_bond.o \
 			hinic3_main.o \
+			hinic3_cmdq_adapter.o \
 			hinic3_tx.o \
 			hinic3_rx.o \
 			hinic3_rss.o \

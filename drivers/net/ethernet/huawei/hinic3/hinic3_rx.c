@@ -32,10 +32,6 @@
 #include "hinic3_rss.h"
 #include "hinic3_rx.h"
 
-static u32 rq_pi_rd_en;
-module_param(rq_pi_rd_en, uint, 0644);
-MODULE_PARM_DESC(rq_pi_rd_en, "Enable rq read pi from host, defaut update pi by doorbell (default=0)");
-
 /* performance: ci addr RTE_CACHE_SIZE(64B) alignment */
 #define HINIC3_RX_HDR_SIZE			256
 #define HINIC3_RX_BUFFER_WRITE			16
@@ -50,6 +46,9 @@ MODULE_PARM_DESC(rq_pi_rd_en, "Enable rq read pi from host, defaut update pi by 
 
 #define HINIC3_RX_PKT_FORMAT_NON_TUNNEL		0
 #define HINIC3_RX_PKT_FORMAT_VXLAN		1
+
+#define HINIC3_RX_COMPACT_CSUM_OTHER_ERROR	2
+#define HINIC3_RX_COMPACT_HW_BYPASS_ERROR	3
 
 #define RXQ_STATS_INC(rxq, field)			\
 do {							\
@@ -164,18 +163,11 @@ static u32 hinic3_rx_fill_buffers(struct hinic3_rxq *rxq)
 	}
 
 	if (likely(i)) {
-		if (!rq_pi_rd_en) {
-			hinic3_write_db(rxq->rq,
-					rxq->q_id & 3,
-					RQ_CFLAG_DP,
-					(u16)((u32)rxq->next_to_update <<
-					rxq->rq->wqe_type));
-		} else {
-			/* Write all the wqes before pi update */
-			wmb();
-
-			hinic3_update_rq_hw_pi(rxq->rq, rxq->next_to_update);
-		}
+		hinic3_write_db(rxq->rq,
+				rxq->q_id & 3,
+				RQ_CFLAG_DP,
+				(u16)((u32)rxq->next_to_update <<
+				rxq->rq->wqe_type));
 		rxq->delta -= i;
 		rxq->next_to_alloc = rxq->next_to_update;
 	} else if (free_wqebbs == rxq->q_depth - 1) {
@@ -355,12 +347,13 @@ static void packaging_skb(struct hinic3_rxq *rxq, struct sk_buff *head_skb,
 		      (((pkt_len) & ((rxq)->buf_len - 1)) ? 1 : 0)))
 
 static struct sk_buff *hinic3_fetch_rx_buffer(struct hinic3_rxq *rxq,
-					      u32 pkt_len)
+					      const struct hinic3_cqe_info *cqe_info)
 {
 	struct sk_buff *head_skb = NULL;
 	struct sk_buff *cur_skb = NULL;
 	struct sk_buff *skb = NULL;
 	struct net_device *netdev = rxq->netdev;
+	u32 pkt_len = cqe_info->pkt_len;
 	u8 sge_num, skb_num;
 	u16 wqebb_cnt = 0;
 
@@ -603,40 +596,34 @@ static void hinic3_pull_tail(struct sk_buff *skb)
 	skb->tail += pull_len;
 }
 
-static void hinic3_rx_csum(struct hinic3_rxq *rxq, u32 offload_type,
-			   u32 status, struct sk_buff *skb)
+static void hinic3_rx_csum(struct hinic3_rxq *rxq, const struct hinic3_cqe_info *cqe_info,
+						struct sk_buff *skb)
 {
 	struct net_device *netdev = rxq->netdev;
-	u32 pkt_type = HINIC3_GET_RX_PKT_TYPE(offload_type);
-	u32 ip_type = HINIC3_GET_RX_IP_TYPE(offload_type);
-	u32 pkt_fmt = HINIC3_GET_RX_TUNNEL_PKT_FORMAT(offload_type);
 
-	u32 csum_err;
-
-	csum_err = HINIC3_GET_RX_CSUM_ERR(status);
-	if (unlikely(csum_err == HINIC3_RX_CSUM_IPSU_OTHER_ERR))
+	if (unlikely(cqe_info->csum_err == HINIC3_RX_CSUM_IPSU_OTHER_ERR))
 		rxq->rxq_stats.other_errors++;
 
 	if (!(netdev->features & NETIF_F_RXCSUM))
 		return;
 
-	if (unlikely(csum_err)) {
+	if (unlikely(cqe_info->csum_err)) {
 		/* pkt type is recognized by HW, and csum is wrong */
-		if (!(csum_err & (HINIC3_RX_CSUM_HW_CHECK_NONE |
-				  HINIC3_RX_CSUM_IPSU_OTHER_ERR)))
+		if (!(cqe_info->csum_err & (HINIC3_RX_CSUM_HW_CHECK_NONE |
+					    HINIC3_RX_CSUM_IPSU_OTHER_ERR)))
 			rxq->rxq_stats.csum_errors++;
 		skb->ip_summed = CHECKSUM_NONE;
 		return;
 	}
 
-	if (ip_type == HINIC3_RX_INVALID_IP_TYPE ||
-	    !(pkt_fmt == HINIC3_RX_PKT_FORMAT_NON_TUNNEL ||
-	      pkt_fmt == HINIC3_RX_PKT_FORMAT_VXLAN)) {
+	if (cqe_info->ip_type == HINIC3_RX_INVALID_IP_TYPE ||
+	    !(cqe_info->pkt_fmt == HINIC3_RX_PKT_FORMAT_NON_TUNNEL ||
+	      cqe_info->pkt_fmt == HINIC3_RX_PKT_FORMAT_VXLAN)) {
 		skb->ip_summed = CHECKSUM_NONE;
 		return;
 	}
 
-	switch (pkt_type) {
+	switch (cqe_info->pkt_type) {
 	case HINIC3_RX_TCP_PKT:
 	case HINIC3_RX_UDP_PKT:
 	case HINIC3_RX_SCTP_PKT:
@@ -802,24 +789,21 @@ unlock_rcu:
 }
 #endif
 
-static int recv_one_pkt(struct hinic3_rxq *rxq, struct hinic3_rq_cqe *rx_cqe,
-			u32 pkt_len, u32 vlan_len, u32 status)
+static int recv_one_pkt(struct hinic3_rxq *rxq, struct hinic3_cqe_info *cqe_info)
 {
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	struct net_device *netdev = rxq->netdev;
-	u32 offload_type;
-	u16 num_lro;
 	struct hinic3_nic_dev *nic_dev = netdev_priv(rxq->netdev);
 
 #ifdef HAVE_XDP_SUPPORT
 	u32 xdp_status;
 
-	xdp_status = hinic3_run_xdp(rxq, pkt_len);
+	xdp_status = (u32)(hinic3_run_xdp(rxq, cqe_info->pkt_len));
 	if (xdp_status == HINIC3_XDP_PKT_DROP)
 		return 0;
 #endif
 
-	skb = hinic3_fetch_rx_buffer(rxq, pkt_len);
+	skb = hinic3_fetch_rx_buffer(rxq, cqe_info);
 	if (unlikely(!skb)) {
 		RXQ_STATS_INC(rxq, alloc_skb_err);
 		return -ENOMEM;
@@ -829,32 +813,26 @@ static int recv_one_pkt(struct hinic3_rxq *rxq, struct hinic3_rq_cqe *rx_cqe,
 	if (skb_is_nonlinear(skb))
 		hinic3_pull_tail(skb);
 
-	offload_type = hinic3_hw_cpu32(rx_cqe->offload_type);
-	hinic3_rx_csum(rxq, offload_type, status, skb);
+	hinic3_rx_csum(rxq, cqe_info, skb);
 
 #ifdef HAVE_SKBUFF_CSUM_LEVEL
-	hinic3_rx_gro(rxq, offload_type, skb);
+	hinic3_rx_gro(rxq, cqe_info->pkt_fmt, skb);
 #endif
 
 #if defined(NETIF_F_HW_VLAN_CTAG_RX)
-	if ((netdev->features & NETIF_F_HW_VLAN_CTAG_RX) &&
-	    HINIC3_GET_RX_VLAN_OFFLOAD_EN(offload_type)) {
+	if ((netdev->features & NETIF_F_HW_VLAN_CTAG_RX) && cqe_info->vlan_offload) {
 #else
-	if ((netdev->features & NETIF_F_HW_VLAN_RX) &&
-	    HINIC3_GET_RX_VLAN_OFFLOAD_EN(offload_type)) {
+	if ((netdev->features & NETIF_F_HW_VLAN_RX) && cqe_info->vlan_offload) {
 #endif
-		u16 vid = HINIC3_GET_RX_VLAN_TAG(vlan_len);
-
 		/* if the packet is a vlan pkt, the vid may be 0 */
-		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vid);
+		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), cqe_info->vlan_tag);
 	}
 
 	if (unlikely(test_bit(HINIC3_LP_TEST, &nic_dev->flags)))
 		hinic3_copy_lp_data(nic_dev, skb);
 
-	num_lro = HINIC3_GET_RX_NUM_LRO(status);
-	if (num_lro)
-		hinic3_lro_set_gso_params(skb, num_lro);
+	if (cqe_info->lro_num)
+		hinic3_lro_set_gso_params(skb, cqe_info->lro_num);
 
 	skb_record_rx_queue(skb, rxq->q_id);
 	skb->protocol = eth_type_trans(skb, netdev);
@@ -879,40 +857,112 @@ static int recv_one_pkt(struct hinic3_rxq *rxq, struct hinic3_rq_cqe *rx_cqe,
 	(HINIC3_GET_RX_IP_TYPE(hinic3_hw_cpu32((cqe)->offload_type)) == \
 	 HINIC3_RX_IPV6_PKT ? LRO_PKT_HDR_LEN_IPV6 : LRO_PKT_HDR_LEN_IPV4)
 
+void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info)
+{
+	struct hinic3_rq_cqe *cqe = (struct hinic3_rq_cqe *)rx_cqe;
+	struct hinic3_cqe_info *info = (struct hinic3_cqe_info *)cqe_info;
+	u32 dw0 = hinic3_hw_cpu32(cqe->status);
+	u32 dw1 = hinic3_hw_cpu32(cqe->vlan_len);
+	u32 dw2 = hinic3_hw_cpu32(cqe->offload_type);
+	u32 dw3 = hinic3_hw_cpu32(cqe->hash_val);
+
+	info->lro_num = RQ_CQE_STATUS_GET(dw0, NUM_LRO);
+	info->csum_err = RQ_CQE_STATUS_GET(dw0, CSUM_ERR);
+
+	info->pkt_len = RQ_CQE_SGE_GET(dw1, LEN);
+	info->vlan_tag = RQ_CQE_SGE_GET(dw1, VLAN);
+
+	info->pkt_type = RQ_CQE_OFFOLAD_TYPE_GET(dw2, PKT_TYPE);
+	info->ip_type = RQ_CQE_OFFOLAD_TYPE_GET(dw0, IP_TYPE);
+	info->pkt_fmt = RQ_CQE_OFFOLAD_TYPE_GET(dw2, TUNNEL_PKT_FORMAT);
+	info->vlan_offload = RQ_CQE_OFFOLAD_TYPE_GET(dw2, VLAN_EN);
+	info->rss_type = RQ_CQE_OFFOLAD_TYPE_GET(dw2, RSS_TYPE);
+	info->rss_hash_value = dw3;
+}
+
+void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info)
+{
+	struct hinic3_rq_cqe *cqe = (struct hinic3_rq_cqe *)rx_cqe;
+	struct hinic3_cqe_info *info = (struct hinic3_cqe_info *)cqe_info;
+	u32 dw0, dw1, dw2;
+
+	dw0 = hinic3_hw_cpu32(cqe->status);
+	dw1 = hinic3_hw_cpu32(cqe->vlan_len);
+	dw2 = hinic3_hw_cpu32(cqe->offload_type);
+
+	info->cqe_type = RQ_COMPACT_CQE_STATUS_GET(dw0, CQE_TYPE);
+	info->csum_err = RQ_COMPACT_CQE_STATUS_GET(dw0, CSUM_ERR);
+	info->vlan_offload = RQ_COMPACT_CQE_STATUS_GET(dw0, VLAN_EN);
+	info->pkt_fmt = RQ_COMPACT_CQE_STATUS_GET(dw0, PKT_FORMAT);
+	info->ip_type = RQ_COMPACT_CQE_STATUS_GET(dw0, IP_TYPE);
+	info->cqe_len = RQ_COMPACT_CQE_STATUS_GET(dw0, CQE_LEN);
+	info->pkt_type = RQ_COMPACT_CQE_STATUS_GET(dw0, PKT_TYPE);
+	info->pkt_len = RQ_COMPACT_CQE_STATUS_GET(dw0, PKT_LEN);
+	info->ts_flag = RQ_COMPACT_CQE_STATUS_GET(dw0, TS_FLAG);
+	info->rss_hash_value = dw1;
+
+	switch (info->csum_err) {
+	case HINIC3_RX_COMPACT_CSUM_OTHER_ERROR:
+		info->csum_err = HINIC3_RX_CSUM_IPSU_OTHER_ERR;
+		break;
+	case HINIC3_RX_COMPACT_HW_BYPASS_ERROR:
+		info->csum_err = HINIC3_RX_CSUM_HW_CHECK_NONE;
+		break;
+	default:
+		break;
+	}
+
+	if (info->cqe_len == RQ_COMPACT_CQE_16BYTE) {
+		info->lro_num = RQ_COMPACT_CQE_OFFLOAD_GET(dw2, NUM_LRO);
+		info->vlan_tag = RQ_COMPACT_CQE_OFFLOAD_GET(dw2, VLAN);
+	}
+}
+
+static bool hinic3_rx_cqe_done(void *rx_queue, void **rx_cqe)
+{
+	u32 sw_ci, status = 0;
+	struct hinic3_rxq *rxq = rx_queue;
+	struct hinic3_rq_cqe *cqe = NULL;
+
+	sw_ci = rxq->cons_idx & rxq->q_mask;
+	*rx_cqe = rxq->rx_info[sw_ci].cqe;
+	cqe = (struct hinic3_rq_cqe *) *rx_cqe;
+
+	status = hinic3_hw_cpu32(cqe->status);
+	if (HINIC3_GET_RX_DONE(status) == 0)
+		return false;
+
+	return true;
+}
+
 int hinic3_rx_poll(struct hinic3_rxq *rxq, int budget)
 {
 	struct hinic3_nic_dev *nic_dev = netdev_priv(rxq->netdev);
-	u32 sw_ci, status, pkt_len, vlan_len, dropped = 0;
+	u32 dropped = 0;
 	struct hinic3_rq_cqe *rx_cqe = NULL;
+	struct hinic3_cqe_info cqe_info = { 0 };
 	u64 rx_bytes = 0;
-	u16 num_lro;
 	int pkts = 0, nr_pkts = 0;
 	u16 num_wqe = 0;
 
 	while (likely(pkts < budget)) {
-		sw_ci = rxq->cons_idx & rxq->q_mask;
-		rx_cqe = rxq->rx_info[sw_ci].cqe;
-		status = hinic3_hw_cpu32(rx_cqe->status);
-		if (!HINIC3_GET_RX_DONE(status))
+		if (!nic_dev->tx_rx_ops.rx_cqe_done(rxq, (void **)&rx_cqe))
 			break;
 
 		/* make sure we read rx_done before packet length */
 		rmb();
 
-		vlan_len = hinic3_hw_cpu32(rx_cqe->vlan_len);
-		pkt_len = HINIC3_GET_RX_PKT_LEN(vlan_len);
-		if (recv_one_pkt(rxq, rx_cqe, pkt_len, vlan_len, status))
+		nic_dev->tx_rx_ops.rx_get_cqe_info(rx_cqe, &cqe_info);
+		if (recv_one_pkt(rxq, &cqe_info))
 			break;
 
-		rx_bytes += pkt_len;
+		rx_bytes += cqe_info.pkt_len;
 		pkts++;
 		nr_pkts++;
 
-		num_lro = HINIC3_GET_RX_NUM_LRO(status);
-		if (num_lro) {
-			rx_bytes += ((num_lro - 1) * LRO_PKT_HDR_LEN(rx_cqe));
-
-			num_wqe += HINIC3_GET_SGE_NUM(pkt_len, rxq);
+		if (cqe_info.lro_num) {
+			rx_bytes += ((cqe_info.lro_num - 1) * LRO_PKT_HDR_LEN(rx_cqe));
+			num_wqe += HINIC3_GET_SGE_NUM(cqe_info.pkt_len, rxq);
 		}
 
 		rx_cqe->status = 0;
@@ -940,6 +990,8 @@ int hinic3_alloc_rxqs_res(struct hinic3_nic_dev *nic_dev, u16 num_rq,
 	int idx, i;
 	u32 pkts;
 	u64 size;
+
+	nic_dev->tx_rx_ops.rx_cqe_done = hinic3_rx_cqe_done;
 
 	for (idx = 0; idx < num_rq; idx++) {
 		rqres = &rxqs_res[idx];
@@ -1237,15 +1289,8 @@ int rxq_restore(struct hinic3_nic_dev *nic_dev, u16 q_id, u16 hw_ci)
 		return err;
 	}
 
-	if (!rq_pi_rd_en) {
-		hinic3_write_db(rxq->rq, rxq->q_id & (NIC_DCB_COS_MAX - 1),
-				RQ_CFLAG_DP, (u16)((u32)rxq->next_to_update << rxq->rq->wqe_type));
-	} else {
-		/* Write all the wqes before pi update */
-		wmb();
-
-		hinic3_update_rq_hw_pi(rxq->rq, rxq->next_to_update);
-	}
+	hinic3_write_db(rxq->rq, rxq->q_id & (NIC_DCB_COS_MAX - 1),
+			RQ_CFLAG_DP, (u16)((u32)rxq->next_to_update << rxq->rq->wqe_type));
 
 	return 0;
 }

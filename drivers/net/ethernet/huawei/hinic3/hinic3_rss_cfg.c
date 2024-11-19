@@ -18,6 +18,7 @@
 #include "hinic3_nic_cmd.h"
 #include "hinic3_hw.h"
 #include "hinic3_nic.h"
+#include "hinic3_nic_cmdq.h"
 #include "hinic3_common.h"
 
 static int hinic3_rss_cfg_hash_key(struct hinic3_nic_io *nic_io, u8 opcode,
@@ -79,32 +80,31 @@ int hinic3_rss_get_indir_tbl(void *hwdev, u32 *indir_table)
 {
 	struct hinic3_cmd_buf *cmd_buf = NULL;
 	struct hinic3_nic_io *nic_io = NULL;
-	u16 *indir_tbl = NULL;
-	int err, i;
+	u8 cmd;
+	int err;
 
-	if (!hwdev || !indir_table)
+	if ((hwdev == NULL) || (indir_table == NULL))
 		return -EINVAL;
 
 	nic_io = hinic3_get_service_adapter(hwdev, SERVICE_T_NIC);
+	if (nic_io == NULL)
+		return -EINVAL;
 	cmd_buf = hinic3_alloc_cmd_buf(hwdev);
-	if (!cmd_buf) {
+	if (cmd_buf == NULL) {
 		nic_err(nic_io->dev_hdl, "Failed to allocate cmd_buf.\n");
 		return -ENOMEM;
 	}
 
-	cmd_buf->size = sizeof(struct nic_rss_indirect_tbl);
+	cmd = nic_io->cmdq_ops->prepare_cmd_buf_get_rss_indir_table(nic_io, cmd_buf);
 	err = hinic3_cmdq_detail_resp(hwdev, HINIC3_MOD_L2NIC,
-				      HINIC3_UCODE_CMD_GET_RSS_INDIR_TABLE,
-				      cmd_buf, cmd_buf, NULL, 0,
+				      cmd, cmd_buf, cmd_buf, NULL, 0,
 				      HINIC3_CHANNEL_NIC);
-	if (err) {
+	if (err != 0) {
 		nic_err(nic_io->dev_hdl, "Failed to get rss indir table\n");
 		goto get_indir_tbl_failed;
 	}
 
-	indir_tbl = (u16 *)cmd_buf->buf;
-	for (i = 0; i < NIC_RSS_INDIR_SIZE; i++)
-		indir_table[i] = *(indir_tbl + i);
+	nic_io->cmdq_ops->cmd_buf_to_rss_indir_table(cmd_buf, indir_table);
 
 get_indir_tbl_failed:
 	hinic3_free_cmd_buf(hwdev, cmd_buf);
@@ -114,41 +114,30 @@ get_indir_tbl_failed:
 
 int hinic3_rss_set_indir_tbl(void *hwdev, const u32 *indir_table)
 {
-	struct nic_rss_indirect_tbl *indir_tbl = NULL;
 	struct hinic3_cmd_buf *cmd_buf = NULL;
 	struct hinic3_nic_io *nic_io = NULL;
-	u32 *temp = NULL;
-	u32 i, size;
+	u8 cmd;
 	u64 out_param = 0;
 	int err;
 
-	if (!hwdev || !indir_table)
+	if ((hwdev == NULL) || (indir_table == NULL))
 		return -EINVAL;
 
 	nic_io = hinic3_get_service_adapter(hwdev, SERVICE_T_NIC);
+	if (nic_io == NULL)
+		return -EINVAL;
+
 	cmd_buf = hinic3_alloc_cmd_buf(hwdev);
-	if (!cmd_buf) {
+	if (cmd_buf == NULL) {
 		nic_err(nic_io->dev_hdl, "Failed to allocate cmd buf\n");
 		return -ENOMEM;
 	}
 
-	cmd_buf->size = sizeof(struct nic_rss_indirect_tbl);
-	indir_tbl = (struct nic_rss_indirect_tbl *)cmd_buf->buf;
-	memset(indir_tbl, 0, sizeof(*indir_tbl));
-
-	for (i = 0; i < NIC_RSS_INDIR_SIZE; i++)
-		indir_tbl->entry[i] = (u16)(*(indir_table + i));
-
-	size = sizeof(indir_tbl->entry) / sizeof(u32);
-	temp = (u32 *)indir_tbl->entry;
-	for (i = 0; i < size; i++)
-		temp[i] = cpu_to_be32(temp[i]);
+	cmd = nic_io->cmdq_ops->prepare_cmd_buf_set_rss_indir_table(nic_io, indir_table, cmd_buf);
 
 	err = hinic3_cmdq_direct_resp(hwdev, HINIC3_MOD_L2NIC,
-				      HINIC3_UCODE_CMD_SET_RSS_INDIR_TABLE,
-				      cmd_buf, &out_param, 0,
-				      HINIC3_CHANNEL_NIC);
-	if (err || out_param != 0) {
+				      cmd, cmd_buf, &out_param, 0, HINIC3_CHANNEL_NIC);
+	if ((err != 0) || (out_param != 0)) {
 		nic_err(nic_io->dev_hdl, "Failed to set rss indir table\n");
 		err = -EFAULT;
 	}

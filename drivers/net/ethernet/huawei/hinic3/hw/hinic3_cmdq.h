@@ -9,6 +9,7 @@
 #include <linux/spinlock.h>
 
 #include "mpu_inband_cmd_defs.h"
+#include "hinic3_cmdq_enhance.h"
 #include "hinic3_hw.h"
 #include "hinic3_wq.h"
 #include "hinic3_common.h"
@@ -22,6 +23,14 @@ struct dma_pool {
 #define HINIC3_SCMD_DATA_LEN		16
 
 #define	HINIC3_CMDQ_DEPTH		4096
+#define	HINIC3_CMDQ_MAX_BUF_SIZE	2048U
+#define	HINIC3_CMDQ_MIN_BUF_SIZE	4U
+#define	HINIC3_CMDQ_BUF_ALIGN		2048U
+
+enum hinic3_cmdq_mode {
+	HINIC3_NORMAL_CMDQ,
+	HINIC3_ENHANCE_CMDQ,
+};
 
 enum hinic3_cmdq_type {
 	HINIC3_CMDQ_SYNC,
@@ -37,6 +46,12 @@ enum hinic3_db_src_type {
 enum hinic3_cmdq_db_type {
 	HINIC3_DB_SQ_RQ_TYPE,
 	HINIC3_DB_CMDQ_TYPE,
+};
+
+enum bufdesc_len {
+	BUFDESC_LCMD_LEN = 2,
+	BUFDESC_SCMD_LEN = 3,
+	BUFDESC_ENHANCE_CMD_LEN = 3,  /* 64B aligned */
 };
 
 /* hardware define: cmdq wqe */
@@ -108,7 +123,16 @@ struct hinic3_cmdq_wqe {
 	union {
 		struct hinic3_cmdq_inline_wqe	inline_wqe;
 		struct hinic3_cmdq_wqe_lcmd	wqe_lcmd;
+		struct hinic3_enhanced_cmdq_wqe	enhanced_cmdq_wqe;
 	};
+};
+
+struct hinic3_cmdq_cmd_param {
+	u8 mod;
+	u8 cmd;
+	struct hinic3_cmd_buf *buf_in;
+	struct hinic3_cmd_buf *buf_out;
+	u64 *out_param;
 };
 
 struct hinic3_cmdq_arm_bit {
@@ -131,10 +155,22 @@ enum hinic3_cmdq_cmd_type {
 	HINIC3_CMD_TYPE_FORCE_STOP,
 };
 
+enum data_format {
+	DATA_SGE,
+	DATA_DIRECT,
+};
+
+#define	WQ_BLOCK_PFN_SHIFT		9
+#define CMDQ_PFN_SHIFT			12
+
+#define CMDQ_PFN(addr)			((addr) >> CMDQ_PFN_SHIFT)
+#define WQ_BLOCK_PFN(page_addr)		((page_addr) >> WQ_BLOCK_PFN_SHIFT)
+
 struct hinic3_cmdq_cmd_info {
 	enum hinic3_cmdq_cmd_type	cmd_type;
 	u16				channel;
 	u16				rsvd1;
+	u16				wqebb_use_num;
 
 	struct completion		*done;
 	int				*errcode;
@@ -156,10 +192,12 @@ struct hinic3_cmdq {
 	spinlock_t			cmdq_lock;
 
 	struct cmdq_ctxt_info		cmdq_ctxt;
+	struct enhance_cmdq_ctxt_info	cmdq_enhance_ctxt;
 
 	struct hinic3_cmdq_cmd_info	*cmd_infos;
 
 	struct hinic3_hwdev		*hwdev;
+	struct hinic3_cmdqs		*cmdqs;
 	u64				rsvd1[2];
 };
 
@@ -181,8 +219,13 @@ struct hinic3_cmdqs {
 	bool				lock_channel_en;
 	unsigned long			channel_stop;
 	u8				cmdq_num;
+	u8				cmdq_mode;
+	u8				wqebb_size;
+	u8				wqebb_use_num;
 	u32				rsvd1;
 	u64				rsvd2;
+	u32				cmd_buf_size;
+	bool				poll;   /* use polling mode or int mode */
 };
 
 void hinic3_cmdq_ceq_handler(void *handle, u32 ceqe_data);
@@ -205,5 +248,8 @@ void hinic3_cmdq_enable_channel_lock(struct hinic3_hwdev *hwdev, bool enable);
 
 void hinic3_cmdq_flush_sync_cmd(struct hinic3_hwdev *hwdev);
 
+void enhanced_cmdq_set_wqe(struct hinic3_cmdq_wqe *wqe, enum hinic3_cmdq_cmd_type cmd_type,
+			const struct hinic3_cmdq_cmd_param *cmd_buf, int wrapped);
+void enhanced_cmdq_init_queue_ctxt(struct hinic3_cmdqs *cmdqs, struct hinic3_cmdq *cmdq);
 #endif
 

@@ -29,6 +29,9 @@ enum ppf_tmr_status {
 
 int hinic3_set_cmdq_depth(void *hwdev, u16 cmdq_depth);
 
+int hinic3_set_enhance_cmdq_ctxt(struct hinic3_hwdev *hwdev, u8 cmdq_id,
+				 struct enhance_cmdq_ctxt_info *ctxt);
+
 int hinic3_set_cmdq_ctxt(struct hinic3_hwdev *hwdev, u8 cmdq_id,
 			 struct cmdq_ctxt_info *ctxt);
 

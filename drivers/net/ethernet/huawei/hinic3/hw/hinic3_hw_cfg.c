@@ -650,8 +650,7 @@ static int cfg_init_eq(struct hinic3_hwdev *dev)
 		 cfg_mgmt->eq_info.num_ceq, cfg_mgmt->eq_info.num_ceq_remain);
 
 	if (!num_ceq) {
-		sdk_err(dev->dev_hdl, "Ceq num cfg in fw is zero\n");
-		return -EFAULT;
+		return 0;
 	}
 
 	eq = kcalloc(num_ceq, sizeof(*eq), GFP_KERNEL);

@@ -27,6 +27,8 @@ enum hinic3_mgmt_cmd {
 	COMM_MGMT_CMD_CFG_MSIX_CTRL_REG, /* config msix ctrl register @see comm_cmd_msix_config */
 	COMM_MGMT_CMD_SET_CEQ_CTRL_REG, /**< set ceq ctrl register @see comm_cmd_ceq_ctrl_reg */
 	COMM_MGMT_CMD_SET_DMA_ATTR, /**< set PF/VF DMA table attr @see comm_cmd_dma_attr_config */
+	COMM_MGMT_CMD_SET_ENHANCE_CMDQ_CTXT,
+
 	COMM_MGMT_CMD_SET_PPF_TBL_HTR_FLG, /* set PPF func table os hotreplace flag
 					    * @see comm_cmd_ppf_tbl_htrp_config
 					    */

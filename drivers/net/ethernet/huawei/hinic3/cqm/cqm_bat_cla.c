@@ -1529,7 +1529,6 @@ static s32 cqm_cla_update(struct tag_cqm_handle *cqm_handle,
 	else
 		cmd.func_id = 0xffff;
 
-	/* Normal mode is 1822 traditional mode and is configured on SMF0. */
 	/* Mode 0 is hashed to 4 SMF engines (excluding PPF) by func ID. */
 	if (cqm_handle->func_capability.lb_mode == CQM_LB_MODE_NORMAL ||
 	    (cqm_handle->func_capability.lb_mode == CQM_LB_MODE_0 &&

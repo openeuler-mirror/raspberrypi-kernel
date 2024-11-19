@@ -137,6 +137,50 @@
 #define HINIC3_GET_ESP_NEXT_HEAD(decry_info) \
 	RQ_CQE_DECRY_INFO_GET(decry_info, ESP_NEXT_HEAD)
 
+/* compact cqe field */
+/* cqe dw0 */
+#define RQ_COMPACT_CQE_STATUS_RXDONE_SHIFT	31
+#define RQ_COMPACT_CQE_STATUS_CQE_TYPE_SHIFT	30
+#define RQ_COMPACT_CQE_STATUS_TS_FLAG_SHIFT	29
+#define RQ_COMPACT_CQE_STATUS_VLAN_EN_SHIFT	28
+#define RQ_COMPACT_CQE_STATUS_PKT_FORMAT_SHIFT	25
+#define RQ_COMPACT_CQE_STATUS_IP_TYPE_SHIFT	24
+#define RQ_COMPACT_CQE_STATUS_CQE_LEN_SHIFT	23
+#define RQ_COMPACT_CQE_STATUS_PKT_MC_SHIFT	21
+#define RQ_COMPACT_CQE_STATUS_CSUM_ERR_SHIFT	19
+#define RQ_COMPACT_CQE_STATUS_PKT_TYPE_SHIFT	16
+#define RQ_COMPACT_CQE_STATUS_PKT_LEN_SHIFT	0
+
+#define RQ_COMPACT_CQE_STATUS_RXDONE_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_CQE_TYPE_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_TS_FLAG_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_VLAN_EN_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_PKT_FORMAT_MASK	0x7U
+#define RQ_COMPACT_CQE_STATUS_IP_TYPE_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_PKT_MC_MASK	0x3U
+#define RQ_COMPACT_CQE_STATUS_CQE_LEN_MASK	0x1U
+#define RQ_COMPACT_CQE_STATUS_CSUM_ERR_MASK	0x3U
+#define RQ_COMPACT_CQE_STATUS_PKT_TYPE_MASK	0x7U
+#define RQ_COMPACT_CQE_STATUS_PKT_LEN_MASK	0xFFFFU
+
+#define RQ_COMPACT_CQE_STATUS_GET(val, member) \
+	((((val) >> RQ_COMPACT_CQE_STATUS_##member##_SHIFT) & \
+	 RQ_COMPACT_CQE_STATUS_##member##_MASK))
+
+/* cqe dw2 */
+#define RQ_COMPACT_CQE_OFFLOAD_NUM_LRO_SHIFT	24
+#define RQ_COMPACT_CQE_OFFLOAD_VLAN_SHIFT	8
+
+#define RQ_COMPACT_CQE_OFFLOAD_NUM_LRO_MASK	0xFFU
+#define RQ_COMPACT_CQE_OFFLOAD_VLAN_MASK	0xFFFFU
+
+#define RQ_COMPACT_CQE_OFFLOAD_GET(val, member) \
+	(((val) >> RQ_COMPACT_CQE_OFFLOAD_##member##_SHIFT) & \
+	 RQ_COMPACT_CQE_OFFLOAD_##member##_MASK)
+
+#define RQ_COMPACT_CQE_16BYTE	0
+#define RQ_COMPACT_CQE_8BYTE	1
+
 struct hinic3_rq_cqe {
 	u32 status;
 	u32 vlan_len;
@@ -147,6 +191,26 @@ struct hinic3_rq_cqe {
 	u32 decrypt_info;
 	u32 rsvd6;
 	u32 pkt_info;
+};
+
+struct hinic3_cqe_info {
+	u8 lro_num;
+	u8 vlan_offload;
+	u8 pkt_fmt;
+	u8 ip_type;
+
+	u8 pkt_type;
+	u8 cqe_len;
+	u8 cqe_type;
+	u8 ts_flag;
+
+	u16 csum_err;
+	u16 vlan_tag;
+
+	u16 pkt_len;
+	u16 rss_type;
+
+	u32 rss_hash_value;
 };
 
 struct hinic3_sge_sect {
