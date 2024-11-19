@@ -532,7 +532,7 @@ static u16 hinic3_set_wqe_combo(struct hinic3_txq *txq,
 	}
 
 	return hinic3_get_and_update_sq_owner(txq->sq, *curr_pi,
-					      num_sge + (u16)!!offload);
+						num_sge + (u16)!!offload);
 }
 
 /* *

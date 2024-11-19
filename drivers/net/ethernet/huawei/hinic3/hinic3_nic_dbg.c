@@ -90,7 +90,7 @@ int hinic3_dbg_get_sq_info(void *hwdev, u16 q_id, struct nic_sq_info *sq_info,
 	sq_info->q_depth = sq->wq.q_depth;
 	sq_info->wqebb_size = sq->wq.wqebb_size;
 
-	sq_info->ci_addr = sq->tx.cons_idx_addr;
+	sq_info->ci_addr = sq->cons_idx_addr;
 
 	sq_info->cla_addr = sq->wq.wq_block_paddr;
 	sq_info->slq_handle = sq;
@@ -127,8 +127,6 @@ int hinic3_dbg_get_rq_info(void *hwdev, u16 q_id, struct nic_rq_info *rq_info,
 	rq = &nic_io->rq[q_id];
 
 	rq_info->q_id = q_id;
-
-	rq_info->hw_pi = cpu_to_be16(*rq->rx.pi_virt_addr);
 
 	rq_info->wqebb_size = rq->wq.wqebb_size;
 	rq_info->q_depth = (u16)rq->wq.q_depth;

@@ -23,7 +23,7 @@ enum hinic3_mod_type {
 	HINIC3_MOD_RSVD1 = 6,
 	HINIC3_MOD_CFGM = 7, /* Configuration module */
 	HINIC3_MOD_CQM = 8,
-	HINIC3_MOD_RSVD2 = 9,
+	HINIC3_MOD_VMSEC = 9,
 	COMM_MOD_FC = 10,
 	HINIC3_MOD_OVS = 11,
 	HINIC3_MOD_DSW = 12,

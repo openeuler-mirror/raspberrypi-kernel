@@ -161,4 +161,6 @@ void hinic3_dump_ceq_info(struct hinic3_hwdev *hwdev);
 
 void hinic3_dump_aeq_info(struct hinic3_hwdev *hwdev);
 
+int hinic3_reschedule_eq(struct hinic3_hwdev *hwdev, enum hinic3_eq_type type,
+			 u16 eq_id);
 #endif

@@ -21,6 +21,7 @@
 #include "hinic3_nic_cfg.h"
 #include "hinic3_srv_nic.h"
 #include "hinic3_nic.h"
+#include "hinic3_nic_cmdq.h"
 #include "hinic3_nic_cmd.h"
 
 /*lint -e806*/
@@ -41,37 +42,28 @@ enum {
 static int hinic3_set_vlan_ctx(struct hinic3_nic_io *nic_io, u16 func_id,
 			       u16 vlan_tag, u16 q_id, bool add)
 {
-	struct nic_vlan_ctx *vlan_ctx = NULL;
 	struct hinic3_cmd_buf *cmd_buf = NULL;
 	u64 out_param = 0;
 	int err;
+	u8 cmd, vlan_mode;
 
 	cmd_buf = hinic3_alloc_cmd_buf(nic_io->hwdev);
-	if (!cmd_buf) {
+	if (cmd_buf == NULL) {
 		nic_err(nic_io->dev_hdl, "Failed to allocate cmd buf\n");
 		return -ENOMEM;
 	}
 
-	cmd_buf->size = sizeof(struct nic_vlan_ctx);
-	vlan_ctx = (struct nic_vlan_ctx *)cmd_buf->buf;
+	vlan_mode = add ?  NIC_QINQ_INSERT_ENABLE : NIC_CVLAN_INSERT_ENABLE;
 
-	vlan_ctx->func_id = func_id;
-	vlan_ctx->qid = q_id;
-	vlan_ctx->vlan_tag = vlan_tag;
-	vlan_ctx->vlan_sel = 0; /* TPID0 in IPSU */
-	vlan_ctx->vlan_mode = add ?
-		NIC_QINQ_INSERT_ENABLE : NIC_CVLAN_INSERT_ENABLE;
-
-	hinic3_cpu_to_be32(vlan_ctx, sizeof(struct nic_vlan_ctx));
+	cmd = nic_io->cmdq_ops->prepare_cmd_buf_modify_svlan(cmd_buf, func_id,
+		vlan_tag, q_id, vlan_mode);
 
 	err = hinic3_cmdq_direct_resp(nic_io->hwdev, HINIC3_MOD_L2NIC,
-				      HINIC3_UCODE_CMD_MODIFY_VLAN_CTX,
-				      cmd_buf, &out_param, 0,
-				      HINIC3_CHANNEL_NIC);
+				      cmd, cmd_buf, &out_param, 0, HINIC3_CHANNEL_NIC);
 
 	hinic3_free_cmd_buf(nic_io->hwdev, cmd_buf);
 
-	if (err || out_param != 0) {
+	if ((err != 0) || out_param != 0) {
 		nic_err(nic_io->dev_hdl, "Failed to set vlan context, err: %d, out_param: 0x%llx\n",
 			err, out_param);
 		return -EFAULT;

@@ -180,11 +180,13 @@ struct hinic3_hwdev {
 	u16 aeq_busy_cnt;
 
 	u64 rsvd4[8];
+	u8 cmdq_mode;
 };
 
 #define HINIC3_DRV_FEATURE_QW0 \
 	(COMM_F_API_CHAIN | COMM_F_CLP | COMM_F_MBOX_SEGMENT | \
-	 COMM_F_CMDQ_NUM | COMM_F_VIRTIO_VQ_SIZE)
+	 COMM_F_CMDQ_NUM | COMM_F_VIRTIO_VQ_SIZE | COMM_F_USE_REAL_RX_BUF_SIZE | \
+	 COMM_F_CMD_BUF_SIZE | COMM_F_ONLY_ENHANCE_CMDQ)
 
 #define HINIC3_MAX_HOST_NUM(hwdev)	((hwdev)->glb_attr.max_host_num)
 #define HINIC3_MAX_PF_NUM(hwdev)	((hwdev)->glb_attr.max_pf_num)
@@ -197,7 +199,10 @@ struct hinic3_hwdev {
 #define COMM_SUPPORT_CHANNEL_DETECT(hwdev) COMM_FEATURE_QW0(hwdev, CHANNEL_DETECT)
 #define COMM_SUPPORT_MBOX_SEGMENT(hwdev) (hinic3_pcie_itf_id(hwdev) == SPU_HOST_ID)
 #define COMM_SUPPORT_CMDQ_NUM(hwdev) COMM_FEATURE_QW0(hwdev, CMDQ_NUM)
+#define COMM_SUPPORT_CMD_BUF_SIZE(hwdev) COMM_FEATURE_QW0(hwdev, CMD_BUF_SIZE)
 #define COMM_SUPPORT_VIRTIO_VQ_SIZE(hwdev) COMM_FEATURE_QW0(hwdev, VIRTIO_VQ_SIZE)
+#define COMM_IS_USE_REAL_RX_BUF_SIZE(hwdev) COMM_FEATURE_QW0(hwdev, USE_REAL_RX_BUF_SIZE)
+#define COMM_SUPPORT_ONLY_ENHANCE_CMDQ(hwdev) COMM_FEATURE_QW0(hwdev, ONLY_ENHANCE_CMDQ)
 
 void set_func_host_mode(struct hinic3_hwdev *hwdev, enum hinic3_func_mode mode);
 

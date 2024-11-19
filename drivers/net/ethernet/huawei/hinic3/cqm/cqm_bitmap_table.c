@@ -661,9 +661,6 @@ s32 cqm_cla_cache_invalid(struct tag_cqm_handle *cqm_handle, dma_addr_t pa, u32 
 	cmd.gpa_l = CQM_ADDR_LW(pa);
 	cmd.gpa_h = cla_gpa_h;
 
-	/* The normal mode is the 1822 traditional mode and is all configured
-	 * on SMF0.
-	 */
 	/* Mode 0 is hashed to 4 SMF engines (excluding PPF) by func ID. */
 	if (cqm_handle->func_capability.lb_mode == CQM_LB_MODE_NORMAL ||
 	    (cqm_handle->func_capability.lb_mode == CQM_LB_MODE_0 &&

@@ -21,6 +21,9 @@
 #define ARRAY_INDEX_6 6
 #define ARRAY_INDEX_7 7
 
+#define	SQ_CI_ADDR_SHIFT 2
+#define	RQ_CI_ADDR_SHIFT 4
+
 struct hinic3_sq_attr {
 	u8 dma_attr_off;
 	u8 pending_limit;
@@ -28,6 +31,16 @@ struct hinic3_sq_attr {
 	u8 intr_en;
 	u16 intr_idx;
 	u32 l2nic_sqn;
+	u64 ci_dma_base;
+};
+
+struct hinic3_rq_attr {
+	u8 cqe_type;
+	u8 pending_limit;
+	u8 coalescing_time;
+	u8 rsv;
+	u16 intr_idx;
+	u32 l2nic_rqn;
 	u64 ci_dma_base;
 };
 
@@ -78,6 +91,7 @@ struct hinic3_nic_cfg {
 	struct mutex sfp_mutex; /* mutex used for copy sfp info */
 };
 
+struct hinic3_nic_cmdq_ops;
 struct hinic3_nic_io {
 	void				*hwdev;
 	void				*pcidev_hdl;
@@ -93,8 +107,11 @@ struct hinic3_nic_io {
 	u16				num_qps;
 	u16				max_qps;
 
-	void				*ci_vaddr_base;
-	dma_addr_t			ci_dma_base;
+	void				*sq_ci_vaddr_base;
+	dma_addr_t			sq_ci_dma_base;
+
+	void				*rq_ci_vaddr_base;
+	dma_addr_t			rq_ci_dma_base;
 
 	u8 __iomem			*sqs_db_addr;
 	u8 __iomem			*rqs_db_addr;
@@ -112,6 +129,7 @@ struct hinic3_nic_io {
 	u32				rsvd6;
 	u64				feature_cap;
 	u64				rsvd7;
+	struct hinic3_nic_cmdq_ops	*cmdq_ops;
 };
 
 struct vf_msg_handler {
@@ -127,7 +145,9 @@ struct nic_event_handler {
 			void *buf_out, u16 *out_size);
 };
 
-int hinic3_set_ci_table(void *hwdev, struct hinic3_sq_attr *attr);
+int hinic3_set_sq_ci_ctx(struct hinic3_nic_io *nic_io, struct hinic3_sq_attr *attr);
+
+int hinic3_set_rq_ci_ctx(struct hinic3_nic_io *nic_io, struct hinic3_rq_attr *attr);
 
 int l2nic_msg_to_mgmt_sync(void *hwdev, u16 cmd, void *buf_in, u16 in_size,
 			   void *buf_out, u16 *out_size);

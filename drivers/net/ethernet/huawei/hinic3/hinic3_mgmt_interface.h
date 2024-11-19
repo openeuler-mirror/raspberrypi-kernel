@@ -43,9 +43,11 @@ enum nic_feature_cap {
 	NIC_F_VF_MAC = BIT(15),
 	NIC_F_RATE_LIMIT = BIT(16),
 	NIC_F_RXQ_RECOVERY = BIT(17),
+	NIC_F_RX_COMPACT_CQE = BIT(20),
+	NIC_F_HTN_CMDQ = BIT(21),
 };
 
-#define NIC_F_ALL_MASK 0x3FFFF /* 使能所有属性 */
+#define NIC_F_ALL_MASK 0x7FBFFFF /* 使能所有属性 */
 
 struct hinic3_mgmt_msg_head {
 	u8 status;
@@ -292,6 +294,24 @@ union sm_tbl_args {
 		u32 total_cnt;
 	} flexq_table_arg;
 	u32 args[4];
+};
+
+struct hinic3_rq_cqe_ctx {
+	struct hinic3_mgmt_msg_head msg_head;
+
+	u8 cqe_type;
+	u8 rq_id;
+	u8 threshold_cqe_num;
+	u8 rsvd1;
+
+	u16 msix_entry_idx;
+	u16 rsvd2;
+
+	u32 ci_addr_hi;
+	u32 ci_addr_lo;
+
+	u16 timer_loop;
+	u16 rsvd3;
 };
 
 #define DFX_SM_TBL_BUF_MAX (768)

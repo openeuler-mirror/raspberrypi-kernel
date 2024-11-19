@@ -28,6 +28,9 @@ enum {
 	COMM_F_MBOX_SEGMENT = 1U << 3,
 	COMM_F_CMDQ_NUM = 1U << 4,
 	COMM_F_VIRTIO_VQ_SIZE = 1U << 5,
+	COMM_F_ONLY_ENHANCE_CMDQ = 1U << 8,
+	COMM_F_USE_REAL_RX_BUF_SIZE = 1U << 9,
+	COMM_F_CMD_BUF_SIZE = 1U << 10,
 };
 
 #define COMM_MAX_FEATURE_QWORD 4
@@ -74,7 +77,8 @@ struct comm_global_attr {
 
 	u8 mgmt_host_node_id;	/**< node id */
 	u8 cmdq_num;		/**< cmdq num */
-	u8 rsvd1[2];
+	u16 cmd_buf_size;   /**< cmd buff size */
+
 	u32 rsvd2[8];
 };
 
@@ -126,6 +130,27 @@ struct comm_cmd_cmdq_ctxt {
 	struct cmdq_ctxt_info ctxt;
 };
 
+struct enhance_cmdq_ctxt_info {
+	u64	eq_cfg;
+	u64	dfx_pi_ci;
+
+	u64	pft_thd;
+	u64	pft_ci;
+
+	u64	rsv;
+	u64	ci_cla_addr;
+};
+
+struct comm_cmd_enhance_cmdq_ctxt {
+	struct mgmt_msg_head head;
+
+	u16 func_id;
+	u8 cmdq_id;
+	u8 rsvd1[5];
+
+	struct enhance_cmdq_ctxt_info ctxt;
+};
+
 struct comm_cmd_root_ctxt {
 	struct mgmt_msg_head head;
 
@@ -134,7 +159,7 @@ struct comm_cmd_root_ctxt {
 	u8 cmdq_depth;
 	u16 rx_buf_sz;
 	u8 lro_en;
-	u8 rsvd1;
+	u8 cmdq_mode;
 	u16 sq_depth;
 	u16 rq_depth;
 	u64 rsvd2;
