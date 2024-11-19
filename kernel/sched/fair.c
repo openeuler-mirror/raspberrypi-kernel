@@ -3413,7 +3413,7 @@ static void task_numa_work(struct callback_head *work)
 		vma = vma_next(&vmi);
 	}
 
-	do {
+	for (; vma; vma = vma_next(&vmi)) {
 		if (!vma_migratable(vma) || !vma_policy_mof(vma) ||
 			is_vm_hugetlb_page(vma) || (vma->vm_flags & VM_MIXEDMAP)) {
 			continue;
@@ -3499,7 +3499,7 @@ static void task_numa_work(struct callback_head *work)
 
 			cond_resched();
 		} while (end != vma->vm_end);
-	} for_each_vma(vmi, vma);
+	}
 
 out:
 	/*
