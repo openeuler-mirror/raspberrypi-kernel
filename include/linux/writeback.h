@@ -90,9 +90,11 @@ struct writeback_control {
 	size_t wb_tcand_bytes;		/* bytes written by this candidate */
 #endif
 
-	KABI_RESERVE(1)
+	/* Target list for splitting a large folio */
+	KABI_USE(1, struct list_head *list)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+
 };
 
 static inline blk_opf_t wbc_to_write_flags(struct writeback_control *wbc)
