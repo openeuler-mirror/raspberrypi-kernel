@@ -130,13 +130,11 @@ static void nbl_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *d
 	struct nbl_adapter *adapter;
 	struct nbl_service_mgt *serv_mgt;
 	struct nbl_dispatch_ops *disp_ops;
-	struct nbl_netdev_priv *priv;
 	struct nbl_driver_info driver_info;
 	char firmware_version[ETHTOOL_FWVERS_LEN] = {' '};
 
 	memset(&driver_info, 0, sizeof(driver_info));
 
-	priv = netdev_priv(netdev);
 	adapter = NBL_NETDEV_TO_ADAPTER(netdev);
 	serv_mgt = NBL_ADAPTER_TO_SERV_MGT(adapter);
 	disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
@@ -161,38 +159,27 @@ static void nbl_stats_fill_strings(struct net_device *netdev, u8 *data)
 	struct nbl_dispatch_ops *disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
 	struct nbl_common_info *common = NBL_SERV_MGT_TO_COMMON(serv_mgt);
 	struct nbl_serv_ring_vsi_info *vsi_info;
-	char *p = (char *)data;
+	u8 *p = (char *)data;
 	unsigned int i;
 
 	vsi_info = &ring_mgt->vsi_info[NBL_VSI_DATA];
 
-	for (i = 0; i < NBL_GLOBAL_STATS_LEN; i++) {
-		snprintf(p, ETH_GSTRING_LEN, "%s", nbl_gstrings_stats[i].stat_string);
-		p += ETH_GSTRING_LEN;
+	for (i = 0; i < NBL_GLOBAL_STATS_LEN; i++)
+		ethtool_sprintf(&p, nbl_gstrings_stats[i].stat_string);
+
+	for (i = 0; i < vsi_info->active_ring_num; i++) {
+		ethtool_sprintf(&p, "tx_queue_%u_packets", i);
+		ethtool_sprintf(&p, "tx_queue_%u_bytes", i);
+		ethtool_sprintf(&p, "tx_queue_%u_descs", i);
+		ethtool_sprintf(&p, "tx_queue_%u_dvn_pkt_drop_cnt", i);
+		ethtool_sprintf(&p, "tx_queue_%u_tx_timeout_cnt", i);
 	}
 
 	for (i = 0; i < vsi_info->active_ring_num; i++) {
-		snprintf(p, ETH_GSTRING_LEN, "tx_queue_%u_packets", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "tx_queue_%u_bytes", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "tx_queue_%u_descs", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "tx_queue_%u_dvn_pkt_drop_cnt", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "tx_queue_%u_tx_timeout_cnt", i);
-		p += ETH_GSTRING_LEN;
-	}
-
-	for (i = 0; i < vsi_info->active_ring_num; i++) {
-		snprintf(p, ETH_GSTRING_LEN, "rx_queue_%u_packets", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "rx_queue_%u_bytes", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "rx_queue_%u_descs", i);
-		p += ETH_GSTRING_LEN;
-		snprintf(p, ETH_GSTRING_LEN, "rx_queue_%u_uvn_stat_pkt_drop", i);
-		p += ETH_GSTRING_LEN;
+		ethtool_sprintf(&p, "rx_queue_%u_packets", i);
+		ethtool_sprintf(&p, "rx_queue_%u_bytes", i);
+		ethtool_sprintf(&p, "rx_queue_%u_descs", i);
+		ethtool_sprintf(&p, "rx_queue_%u_uvn_stat_pkt_drop", i);
 	}
 	if (!common->is_vf)
 		disp_ops->fill_private_stat_strings(NBL_SERV_MGT_TO_DISP_PRIV(serv_mgt), p);
@@ -203,7 +190,7 @@ static void nbl_priv_flags_fill_strings(struct net_device *netdev, u8 *data)
 	struct nbl_service_mgt *serv_mgt = NBL_NETDEV_TO_SERV_MGT(netdev);
 	struct nbl_dispatch_ops *disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
 
-	char *p = (char *)data;
+	u8 *p = (char *)data;
 	unsigned int i;
 
 	for (i = 0; i < NBL_PRIV_FLAG_ARRAY_SIZE; i++) {
@@ -214,8 +201,7 @@ static void nbl_priv_flags_fill_strings(struct net_device *netdev, u8 *data)
 							   capability_type))
 				continue;
 		}
-		snprintf(p, ETH_GSTRING_LEN, "%s", nbl_gstrings_priv_flags[i].flag_name);
-		p += ETH_GSTRING_LEN;
+		ethtool_sprintf(&p, nbl_gstrings_priv_flags[i].flag_name);
 	}
 }
 
@@ -305,13 +291,12 @@ static int nbl_get_sset_count(struct net_device *netdev, int sset)
 	}
 }
 
-void nbl_serv_adjust_interrpt_param(struct nbl_service_mgt *serv_mgt, bool ethtool)
+static void nbl_serv_adjust_interrpt_param(struct nbl_service_mgt *serv_mgt, bool ethtool)
 {
 	struct nbl_serv_net_resource_mgt *net_resource_mgt;
 	struct nbl_serv_ring_mgt *ring_mgt;
 	struct nbl_dispatch_ops *disp_ops;
 	struct net_device *netdev;
-	struct nbl_netdev_priv *net_priv;
 	struct nbl_serv_ring_vsi_info *vsi_info;
 	u64 last_tx_packets;
 	u64 last_rx_packets;
@@ -323,7 +308,6 @@ void nbl_serv_adjust_interrpt_param(struct nbl_service_mgt *serv_mgt, bool ethto
 
 	net_resource_mgt = NBL_SERV_MGT_TO_NET_RES_MGT(serv_mgt);
 	netdev = net_resource_mgt->netdev;
-	net_priv = netdev_priv(netdev);
 	ring_mgt = NBL_SERV_MGT_TO_RING_MGT(serv_mgt);
 	disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
 	vsi_info = &ring_mgt->vsi_info[NBL_VSI_DATA];
@@ -362,12 +346,10 @@ void nbl_serv_update_stats(struct nbl_service_mgt *serv_mgt, bool ethtool)
 {
 	struct nbl_serv_net_resource_mgt *net_resource_mgt;
 	struct net_device *netdev;
-	struct nbl_netdev_priv *net_priv;
 	struct nbl_adapter *adapter;
 
 	net_resource_mgt = NBL_SERV_MGT_TO_NET_RES_MGT(serv_mgt);
 	netdev = net_resource_mgt->netdev;
-	net_priv = netdev_priv(netdev);
 	adapter = NBL_NETDEV_TO_ADAPTER(netdev);
 
 	if (!test_bit(NBL_RUNNING, adapter->state) ||
@@ -507,12 +489,12 @@ static int nbl_get_module_info(struct net_device *netdev, struct ethtool_modinfo
 	return err;
 }
 
-int nbl_get_eeprom_length(struct net_device *netdev)
+static int nbl_get_eeprom_length(struct net_device *netdev)
 {
 	return NBL_EEPROM_LENGTH;
 }
 
-int nbl_get_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom, u8 *bytes)
+static int nbl_get_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom, u8 *bytes)
 {
 	return -EINVAL;
 }
@@ -775,11 +757,8 @@ static int nbl_set_ksettings(struct net_device *netdev, const struct ethtool_lin
 	struct nbl_service_mgt *serv_mgt;
 	struct nbl_serv_net_resource_mgt *net_resource_mgt;
 	struct nbl_dispatch_ops *disp_ops;
-	struct nbl_phy_state *phy_state;
-	struct nbl_phy_caps *phy_caps;
 	struct nbl_port_state port_state = {0};
 	struct nbl_port_advertising port_advertising = {0};
-	u32 autoneg = 0;
 	u32 speed, fw_speed, module_speed, max_speed;
 	u64 speed_advert = 0;
 	u8 active_fec = 0;
@@ -788,8 +767,6 @@ static int nbl_set_ksettings(struct net_device *netdev, const struct ethtool_lin
 	serv_mgt = NBL_NETDEV_TO_SERV_MGT(netdev);
 	disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
 	net_resource_mgt = NBL_SERV_MGT_TO_NET_RES_MGT(serv_mgt);
-	phy_state = &net_resource_mgt->phy_state;
-	phy_caps = &net_resource_mgt->phy_caps;
 
 	ret = disp_ops->get_port_state(NBL_SERV_MGT_TO_DISP_PRIV(serv_mgt),
 				       NBL_COMMON_TO_ETH_ID(serv_mgt->common), &port_state);
@@ -814,9 +791,6 @@ static int nbl_set_ksettings(struct net_device *netdev, const struct ethtool_lin
 		netdev_err(netdev, "half duplex is not support\n");
 		return -EOPNOTSUPP;
 	}
-
-	autoneg = (port_state.port_advertising & BIT(NBL_PORT_CAP_AUTONEG)) ?
-		   AUTONEG_ENABLE : AUTONEG_DISABLE;
 
 	speed = cmd->base.speed;
 	fw_speed = nbl_conver_fw_rate_to_speed(port_state.fw_port_max_speed);
@@ -1691,8 +1665,6 @@ static int nbl_set_pause_param(struct net_device *netdev, struct ethtool_pausepa
 	struct nbl_service_mgt *serv_mgt;
 	struct nbl_serv_net_resource_mgt *net_resource_mgt;
 	struct nbl_dispatch_ops *disp_ops;
-	struct nbl_phy_state *phy_state;
-	struct nbl_phy_caps *phy_caps;
 	struct nbl_port_state port_state = {0};
 	struct nbl_port_advertising port_advertising = {0};
 	u32 autoneg = 0;
@@ -1703,8 +1675,6 @@ static int nbl_set_pause_param(struct net_device *netdev, struct ethtool_pausepa
 	serv_mgt = NBL_NETDEV_TO_SERV_MGT(netdev);
 	disp_ops = NBL_SERV_MGT_TO_DISP_OPS(serv_mgt);
 	net_resource_mgt = NBL_SERV_MGT_TO_NET_RES_MGT(serv_mgt);
-	phy_state = &net_resource_mgt->phy_state;
-	phy_caps = &net_resource_mgt->phy_caps;
 
 	ret = disp_ops->get_port_state(NBL_SERV_MGT_TO_DISP_PRIV(serv_mgt),
 				       NBL_COMMON_TO_ETH_ID(serv_mgt->common), &port_state);
@@ -1874,7 +1844,6 @@ static int nbl_get_fec_param(struct net_device *netdev, struct ethtool_fecparam 
 	struct nbl_port_state port_state = {0};
 	u32 fec = 0;
 	u32 active_fec = 0;
-	u8 autoneg = 0;
 	int ret = 0;
 
 	ret = disp_ops->get_port_state(NBL_SERV_MGT_TO_DISP_PRIV(serv_mgt),
@@ -1889,8 +1858,6 @@ static int nbl_get_fec_param(struct net_device *netdev, struct ethtool_fecparam 
 		return -EINVAL;
 	}
 
-	autoneg = (port_state.port_advertising & BIT(NBL_PORT_CAP_AUTONEG)) ?
-		   AUTONEG_ENABLE : AUTONEG_DISABLE;
 
 	if (port_state.active_fec == NBL_PORT_FEC_OFF)
 		active_fec = ETHTOOL_FEC_OFF;
