@@ -4,11 +4,13 @@
  * Author:
  */
 
+#include "nbl_hwmon.h"
+
+#if defined(CONFIG_HWMON) || (defined(MODULE) && defined(CONFIG_HWMON_MODULE))
 #include <linux/pci.h>
 #include <linux/fs.h>
 #include <linux/hwmon.h>
 #include <linux/hwmon-sysfs.h>
-#include "nbl_hwmon.h"
 
 static const char * const nbl_hwmon_sensor_name[] = {
 	"Sensor0",
@@ -121,6 +123,8 @@ static const struct hwmon_chip_info nbl_hwmon_chip_info = {
 	.ops = &nbl_hwmon_ops,
 	.info = nbl_hwmon_info,
 };
+
+#endif
 
 int nbl_dev_setup_hwmon(struct nbl_adapter *adapter)
 {
