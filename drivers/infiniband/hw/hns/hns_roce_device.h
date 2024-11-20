@@ -1081,6 +1081,7 @@ struct hns_roce_scc_param {
 	enum hns_roce_scc_algo algo_type;
 	struct delayed_work scc_cfg_dwork;
 	struct hns_roce_dev *hr_dev;
+	__le32 latest_param[HNS_ROCE_SCC_PARAM_SIZE];
 };
 
 struct hns_roce_dev {
