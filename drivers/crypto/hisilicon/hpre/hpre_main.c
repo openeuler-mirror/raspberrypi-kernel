@@ -357,8 +357,6 @@ static struct dfx_diff_registers hpre_diff_regs[] = {
 	},
 };
 
-static const struct hisi_qm_err_ini hpre_err_ini;
-
 bool hpre_check_alg_support(struct hisi_qm *qm, u32 alg)
 {
 	u32 cap_val;
@@ -1162,7 +1160,6 @@ static int hpre_qm_init(struct hisi_qm *qm, struct pci_dev *pdev)
 		qm->qp_num = pf_q_num;
 		qm->debug.curr_qm_qp_num = pf_q_num;
 		qm->qm_list = &hpre_devices;
-		qm->err_ini = &hpre_err_ini;
 		if (pf_q_num_flag)
 			set_bit(QM_MODULE_PARAM, &qm->misc_ctl);
 	}
@@ -1226,7 +1223,7 @@ static void hpre_show_last_regs_uninit(struct hisi_qm *qm)
 {
 	struct qm_debug *debug = &qm->debug;
 
-	if (!debug->last_words)
+	if (qm->fun_type == QM_HW_VF || !debug->last_words)
 		return;
 
 	kfree(debug->last_words);
@@ -1341,17 +1338,6 @@ static const struct hisi_qm_err_ini hpre_err_ini = {
 	.err_info_init		= hpre_err_info_init,
 };
 
-static void hpre_probe_uninit(struct hisi_qm *qm)
-{
-	if (qm->fun_type == QM_HW_VF)
-		return;
-
-	hpre_cnt_regs_clear(qm);
-	qm->debug.curr_qm_qp_num = 0;
-	hpre_show_last_regs_uninit(qm);
-	hpre_close_sva_prefetch(qm);
-}
-
 static int hpre_pf_probe_init(struct hpre *hpre)
 {
 	struct hisi_qm *qm = &hpre->qm;
@@ -1363,6 +1349,8 @@ static int hpre_pf_probe_init(struct hpre *hpre)
 
 	hpre_open_sva_prefetch(qm);
 
+	qm->err_ini = &hpre_err_ini;
+	qm->err_ini->err_info_init(qm);
 	hisi_qm_dev_err_init(qm);
 	ret = hpre_show_last_regs_init(qm);
 	if (ret)
@@ -1461,7 +1449,7 @@ err_qm_del_list:
 	hisi_qm_stop(qm, QM_NORMAL);
 
 err_with_err_init:
-	hpre_probe_uninit(qm);
+	hpre_show_last_regs_uninit(qm);
 	hisi_qm_dev_err_uninit(qm);
 
 err_with_qm_init:
@@ -1485,7 +1473,9 @@ static void hpre_remove(struct pci_dev *pdev)
 	hisi_qm_stop(qm, QM_NORMAL);
 
 	if (qm->fun_type == QM_HW_PF) {
-		hpre_probe_uninit(qm);
+		hpre_cnt_regs_clear(qm);
+		qm->debug.curr_qm_qp_num = 0;
+		hpre_show_last_regs_uninit(qm);
 		hisi_qm_dev_err_uninit(qm);
 	}
 
