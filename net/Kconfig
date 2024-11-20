@@ -523,7 +523,22 @@ config NETACC_TERRACE
 
 config ETH_CAQM
 	bool "Enable CAQM for Ethernet"
+	default n
 	help
-	  Enable CAQM (Congestion-Aware Queue Management) for Ethernet drivers.
+	  Enable CAQM (Congestion-Aware Queue Management) for Ethernet layer.
+	  Unsolved Problem: SYN/SYN-ACK process should be split from payload.
+	  Before solving the problem above, the config should not be opened
+	  for the openeuler_defconfig
+
+config ETH_P_CAQM
+	hex "CAQM TPID value"
+	depends on ETH_CAQM
+	default "0x8200"
+	range 1501 0xFFFF
+	help
+	  The CAQM TPID, i.e. the proto number for 802. Because the value is
+	  not fixed now. We need to set it as a config parameter.
+	  See IANA spec to avoid conflict:
+	    https://www.iana.org/assignments/ieee-802-numbers
 
 endif   # if NET

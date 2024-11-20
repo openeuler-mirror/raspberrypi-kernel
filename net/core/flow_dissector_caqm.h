@@ -17,7 +17,7 @@ static inline int rps_try_skip_caqm_hdr(const struct sk_buff *skb, const void *d
 	const struct caqm_hdr *caqm = NULL;
 	struct caqm_hdr _caqm;
 
-	if (!static_branch_unlikely(&sysctl_caqm_enable) || !eth_type_caqm(*proto_ptr))
+	if (!static_branch_unlikely(&sysctl_caqm_enable))
 		return FLOW_DISSECT_RET_OUT_BAD;
 
 	caqm = __skb_header_pointer(skb, *nhoff_ptr, sizeof(_caqm),

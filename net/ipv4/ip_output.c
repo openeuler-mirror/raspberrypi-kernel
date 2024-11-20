@@ -83,7 +83,7 @@
 #include <linux/netfilter_bridge.h>
 #include <linux/netlink.h>
 #include <linux/tcp.h>
-#include "eth_caqm.h"
+#include <linux/if_caqm.h>
 
 static int
 ip_fragment(struct net *net, struct sock *sk, struct sk_buff *skb,
@@ -234,10 +234,10 @@ static int ip_finish_output2(struct net *net, struct sock *sk, struct sk_buff *s
 		sock_confirm_neigh(skb, neigh);
 		/* if crossing protocols, can not use the cached header */
 #ifdef CONFIG_ETH_CAQM
-		res = caqm_neigh_output(neigh, skb, is_v6gw, dev);
-#else
-		res = neigh_output(neigh, skb, is_v6gw);
+		/* if caqm, can not use the cached header */
+		is_v6gw = is_v6gw | is_caqm_out_enable(skb, dev);
 #endif
+		res = neigh_output(neigh, skb, is_v6gw);
 		rcu_read_unlock();
 		return res;
 	}

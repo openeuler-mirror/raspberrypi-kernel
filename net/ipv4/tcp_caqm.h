@@ -28,6 +28,14 @@
 
 #define MAX_HINT_VAL (0xFF)
 
+/* caqm_flags in tcp_sock alias ecn_flags(already used 1,2,4,8) */
+#define TCP_CAQM_SRV (16)
+#define TCP_CAQM_CLI (32)
+#define TCP_CAQM_OK	(TCP_CAQM_SRV | TCP_CAQM_CLI)
+
+#define TCP_EXFLAGS_CLI_CAQM (1)
+#define TCP_EXFLAGS_SRV_CAQM (2)
+
 /* CAQM Alg State */
 enum CaqmState {
 	CAQM_STATE_START = 1,	// Slow_Start
@@ -239,7 +247,9 @@ static inline void try_to_recv_pkt_w_caqm(struct sock *sk, struct sk_buff *skb)
 }
 
 // For tcp_output.c
-static inline void try_to_update_skb_for_caqm(struct sock *sk, struct sk_buff *skb)
+// 1. update skb's caqm metadata;
+// 2. return the 4b tcp header reserved field to add;
+static inline u8 try_to_update_skb_for_caqm(struct sock *sk, struct sk_buff *skb)
 {
 #ifdef CONFIG_ETH_CAQM
 	struct tcp_sock *tp = tcp_sk(sk);
@@ -248,11 +258,12 @@ static inline void try_to_update_skb_for_caqm(struct sock *sk, struct sk_buff *s
 	bool skb_has_ack = ((TCP_SKB_CB(skb)->tcp_flags & TCPHDR_ACK) == TCPHDR_ACK);
 	bool tp_ecn_has_caqm = ((tp->ecn_flags & TCP_CAQM_OK) == TCP_CAQM_OK);
 	struct caqm_ca *caqm_ca = inet_csk_ca(sk);
+	u8 tcp_hdr_rsrvd_4b = 0;
 
 	if (!static_branch_unlikely(&sysctl_caqm_enable))
-		return;
+		return 0;
 	if (!tcp_ca_needs_caqm(sk))
-		return;
+		return 0;
 
 	if (tp_ecn_has_caqm && !skb_has_syn && cinfo->send_en == 0) {
 		/* Pure ACK or Payload? */
@@ -264,13 +275,15 @@ static inline void try_to_update_skb_for_caqm(struct sock *sk, struct sk_buff *s
 		set_skb_caqm_info_send_en(skb, 1);
 	} else if (skb_has_syn && skb_has_ack) {
 		/* Packet CAQM state for a SYN-ACK */
-		TCP_SKB_CB(skb)->unused |= TCP_EXFLAGS_SRV_CAQM;
+		tcp_hdr_rsrvd_4b |= TCP_EXFLAGS_SRV_CAQM;
 	} else if (skb_has_syn) {
 		/* Packet CAQM state for a SYN.  */
 		tp->ecn_flags |= TCP_CAQM_CLI; //init caqm flags
-		TCP_SKB_CB(skb)->unused |= TCP_EXFLAGS_CLI_CAQM;
+		tcp_hdr_rsrvd_4b |= TCP_EXFLAGS_CLI_CAQM;
 	}
+	return tcp_hdr_rsrvd_4b;
 #endif
+	return 0;
 }
 
 static inline void tcp_caqm_make_synack(const struct sock *sk, struct tcphdr *th)
@@ -282,7 +295,7 @@ static inline void tcp_caqm_make_synack(const struct sock *sk, struct tcphdr *th
 }
 
 // For tcp_minisocks.c
-static inline void copy_ecn_flags(struct sock *parent, struct sock *child)
+static inline void tcp_copy_ecn_flags(struct sock *parent, struct sock *child)
 {
 #ifdef CONFIG_ETH_CAQM
 	if (static_branch_unlikely(&sysctl_caqm_enable)) {
@@ -294,5 +307,14 @@ static inline void copy_ecn_flags(struct sock *parent, struct sock *child)
 	}
 #endif
 }
+
+#ifdef CONFIG_ETH_CAQM
+static inline int caqm_leave_room_size(const struct sock *sk)
+{
+	if (!static_branch_unlikely(&sysctl_caqm_enable) || !tcp_ca_needs_caqm(sk))
+		return 0;
+	return CAQM_HLEN;
+}
+#endif
 
 #endif

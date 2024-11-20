@@ -16,9 +16,6 @@
 // cc_type is 3bit, so the max value is 0b'111
 static const unsigned int sysctl_caqm_cc_type_max = 7;
 static const unsigned int sysctl_caqm_alpha_fx_8_max = INT16_MAX;
-// tpid should be larger than the max MTU to ensure not as IEEE803
-static const unsigned int sysctl_caqm_tpid_min = 1501;
-static const unsigned int sysctl_caqm_tpid_max = 0xFFFF;
 static const unsigned int sysctl_caqm_mtu_unit_min = 64;
 static const unsigned int sysctl_caqm_mtu_unit_max = 9000;
 static const unsigned int sysctl_caqm_data_hint_unit_max = 1024;

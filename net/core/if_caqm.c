@@ -18,8 +18,6 @@ int sysctl_caqm_beta __read_mostly = 512;
 EXPORT_SYMBOL(sysctl_caqm_beta);
 unsigned int sysctl_caqm_min_cwnd __read_mostly = 1;
 EXPORT_SYMBOL(sysctl_caqm_min_cwnd);
-int sysctl_caqm_tpid __read_mostly = 0x8200;
-EXPORT_SYMBOL(sysctl_caqm_tpid);
 int sysctl_caqm_mtu_unit __read_mostly = 1024;
 EXPORT_SYMBOL(sysctl_caqm_mtu_unit);
 int sysctl_caqm_data_hint_unit __read_mostly = 8;

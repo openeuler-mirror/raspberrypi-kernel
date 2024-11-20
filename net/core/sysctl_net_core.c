@@ -629,15 +629,6 @@ static struct ctl_table net_core_table[] = {
 		.extra2		= SYSCTL_INT_MAX,
 	},
 	{
-		.procname	= "sysctl_caqm_tpid",
-		.data		= &sysctl_caqm_tpid,
-		.mode		= 0644,
-		.maxlen		= sizeof(int),
-		.proc_handler	= proc_dointvec_minmax,
-		.extra1		= (void *)&sysctl_caqm_tpid_min,
-		.extra2		= (void *)&sysctl_caqm_tpid_max,
-	},
-	{
 		.procname	= "sysctl_caqm_mtu_unit",
 		.data		= &sysctl_caqm_mtu_unit,
 		.mode		= 0644,

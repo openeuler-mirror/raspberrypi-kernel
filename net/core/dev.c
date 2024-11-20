@@ -3398,11 +3398,11 @@ __be16 skb_network_protocol(struct sk_buff *skb, int *depth)
 		eth = (struct ethhdr *)skb->data;
 		type = eth->h_proto;
 	}
+	type = vlan_get_protocol_and_depth(skb, type, depth);
 #ifdef CONFIG_ETH_CAQM
-	return caqm_get_protocol_and_depth(skb, type, depth);
-#else
-	return vlan_get_protocol_and_depth(skb, type, depth);
+	type = caqm_get_protocol_and_depth(skb, type, depth);
 #endif
+	return type;
 }
 
 
@@ -5327,16 +5327,15 @@ EXPORT_SYMBOL_GPL(netdev_rx_handler_unregister);
  */
 static bool skb_pfmemalloc_protocol(struct sk_buff *skb)
 {
-#ifdef CONFIG_ETH_CAQM
-	if (static_branch_unlikely(&sysctl_caqm_enable) && skb->protocol == htons(sysctl_caqm_tpid))
-		return true;
-#endif
 	switch (skb->protocol) {
 	case htons(ETH_P_ARP):
 	case htons(ETH_P_IP):
 	case htons(ETH_P_IPV6):
 	case htons(ETH_P_8021Q):
 	case htons(ETH_P_8021AD):
+#ifdef CONFIG_ETH_CAQM
+	case htons(CONFIG_ETH_P_CAQM):
+#endif
 		return true;
 	default:
 		return false;
@@ -5411,9 +5410,11 @@ another_round:
 	}
 
 #ifdef CONFIG_ETH_CAQM
-	skb = skb_try_caqm_untag(skb);
-	if (unlikely(!skb))
-		goto out;
+	if (eth_type_caqm(skb->protocol)) {
+		skb = skb_caqm_untag(skb);
+		if (unlikely(!skb))
+			goto out;
+	}
 #endif
 
 	if (skb_skip_tc_classify(skb))

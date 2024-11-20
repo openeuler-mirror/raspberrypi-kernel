@@ -874,7 +874,7 @@ int tcp_child_process(struct sock *parent, struct sock *child,
 	int ret = 0;
 	int state = child->sk_state;
 
-	copy_ecn_flags(parent, child);
+	tcp_copy_ecn_flags(parent, child);
 	/* record sk_napi_id and sk_rx_queue_mapping of child. */
 	sk_mark_napi_id_set(child, skb);
 

@@ -83,10 +83,7 @@ int eth_header(struct sk_buff *skb, struct net_device *dev,
 {
 	struct ethhdr *eth;
 	#ifdef CONFIG_ETH_CAQM
-	int caqm_add_hdr_res = caqm_add_eth_header(skb, &type, dev);
-
-	if (unlikely(caqm_add_hdr_res != 0))
-		return -ETH_HLEN;
+	caqm_add_eth_header(skb, &type, dev);
 	#endif
 	eth = skb_push(skb, ETH_HLEN);
 

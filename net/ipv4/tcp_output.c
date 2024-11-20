@@ -1309,9 +1309,10 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 	struct tcphdr *th;
 	u64 prior_wstamp;
 	int err;
+	u8 tcp_hdr_rsrvd_4b;
 
 	BUG_ON(!skb || !tcp_skb_pcount(skb));
-	try_to_update_skb_for_caqm(sk, skb);
+	tcp_hdr_rsrvd_4b = try_to_update_skb_for_caqm(sk, skb);
 	tp = tcp_sk(sk);
 	prior_wstamp = tp->tcp_wstamp_ns;
 	tp->tcp_wstamp_ns = max(tp->tcp_wstamp_ns, tp->tcp_clock_cache);
@@ -1399,7 +1400,7 @@ static int __tcp_transmit_skb(struct sock *sk, struct sk_buff *skb,
 					tcb->tcp_flags);
 #ifdef CONFIG_ETH_CAQM
 	if (static_branch_unlikely(&sysctl_caqm_enable))
-		*(((__be16 *)th) + 6)	|= htons((tcb->unused & 0x0F) << 8);
+		*(((__be16 *)th) + 6)	|= htons((tcp_hdr_rsrvd_4b & 0x0F) << 8);
 #endif
 
 	th->check		= 0;
@@ -1762,6 +1763,9 @@ static inline int __tcp_mtu_to_mss(struct sock *sk, int pmtu)
 	   It is MMS_S - sizeof(tcphdr) of rfc1122
 	 */
 	mss_now = pmtu - icsk->icsk_af_ops->net_header_len - sizeof(struct tcphdr);
+	#ifdef CONFIG_ETH_CAQM
+	mss_now -= caqm_leave_room_size(sk); // leave room for caqm
+	#endif
 
 	/* IPv6 adds a frag_hdr in case RTAX_FEATURE_ALLFRAG is set */
 	if (icsk->icsk_af_ops->net_frag_header_len) {

@@ -1475,12 +1475,14 @@ proto_again:
 					       nhoff, hlen);
 		break;
 
-	default:
-		#ifdef CONFIG_ETH_CAQM
+	#ifdef CONFIG_ETH_CAQM
+	case htons(CONFIG_ETH_P_CAQM):
 		fdret = rps_try_skip_caqm_hdr(skb, data, &proto, &nhoff, hlen);
-		#else
+		break;
+	#endif
+
+	default:
 		fdret = FLOW_DISSECT_RET_OUT_BAD;
-		#endif
 		break;
 	}
 

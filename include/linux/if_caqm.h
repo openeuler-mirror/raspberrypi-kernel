@@ -27,16 +27,6 @@
 #define CAQM_RECV_EN	(true)
 #define CAQM_SEND_EN	(true)
 
-/*
- * caqm_flags in tcp_sock alias ecn_flags(already used 1,2,4,8)
- */
-#define TCP_CAQM_SRV (16)
-#define TCP_CAQM_CLI (32)
-#define TCP_CAQM_OK	(TCP_CAQM_SRV|TCP_CAQM_CLI)
-
-#define TCP_EXFLAGS_CLI_CAQM (1)
-#define TCP_EXFLAGS_SRV_CAQM (2)
-
 #define FIXED_POINT_8 (8U)
 #define FIXED_POINT_20 (20U)
 #define FIXED_POINT_8_UNIT (1<<8U)
@@ -47,7 +37,6 @@ extern int sysctl_caqm_debug_info;
 extern int sysctl_caqm_alpha_fx_8;
 extern int sysctl_caqm_beta;
 extern unsigned int sysctl_caqm_min_cwnd;
-extern int sysctl_caqm_tpid;
 extern int sysctl_caqm_mtu_unit;
 extern int sysctl_caqm_data_hint_unit;
 extern unsigned int sysctl_caqm_ack_hint_unit;
@@ -127,7 +116,7 @@ struct caqm_hdr {
  */
 static inline bool eth_type_caqm(__be16 ethertype)
 {
-	return ethertype == htons(sysctl_caqm_tpid);
+	return ethertype == htons(CONFIG_ETH_P_CAQM);
 }
 
 #define CAQM_PKT_ACK (0)
@@ -315,13 +304,13 @@ static inline __be16 caqm_get_protocol_and_depth_after_vlan(struct sk_buff *skb,
 }
 #endif
 
-static inline struct sk_buff *skb_try_caqm_untag(struct sk_buff *skb)
+static inline struct sk_buff *skb_caqm_untag(struct sk_buff *skb)
 {
 #ifdef CONFIG_ETH_CAQM
 	struct caqm_hdr *chdr;
 	u16 caqm_hdr_info;
 
-	if (!static_branch_unlikely(&sysctl_caqm_enable) || !eth_type_caqm(skb->protocol))
+	if (!static_branch_unlikely(&sysctl_caqm_enable))
 		return skb;
 
 	skb = skb_share_check(skb, GFP_ATOMIC);
@@ -430,7 +419,6 @@ static inline void skb_gro_caqm_untag(struct sk_buff *skb)
 static inline __be16 caqm_get_protocol_and_depth(struct sk_buff *skb,
 						 __be16 type, int *depth)
 {
-	type = vlan_get_protocol_and_depth(skb, type, depth);
 	if (static_branch_unlikely(&sysctl_caqm_enable) && eth_type_caqm(type))
 		return caqm_get_protocol_and_depth_after_vlan(skb, type, depth);
 	else
@@ -451,27 +439,47 @@ static inline void caqm_update_hint_in_gro(struct sk_buff *skb, struct sk_buff *
 #endif
 }
 
-static inline int caqm_add_eth_header(struct sk_buff *skb, unsigned short *type,
+static inline void caqm_add_eth_header(struct sk_buff *skb, unsigned short *type,
 			       struct net_device *dev)
 {
 #ifdef CONFIG_ETH_CAQM
 	struct skb_caqm_info *cinfo = get_skb_caqm_info(skb);
 
-	if (static_branch_unlikely(&sysctl_caqm_enable) &&
-	    (sysctl_caqm_filter_nics & (1UL << dev->ifindex)) == 0)
+	if (!static_branch_unlikely(&sysctl_caqm_enable))
+		return;
+
+	if ((sysctl_caqm_filter_nics & (1UL << dev->ifindex)) == 0)
 		cinfo->send_en = 0;
-	if (static_branch_unlikely(&sysctl_caqm_enable) && cinfo->send_en) {
+	if (cinfo->send_en) {
 		cinfo->send_en = 0;
 		if (unlikely(skb_headroom(skb) <  ETH_HLEN + CAQM_HLEN))
-			return -ETH_HLEN;
+			return; // No enough room
 		u16 *chdr = skb_push(skb, CAQM_HLEN);
 
 		chdr[0] = (cinfo->send_hdr);
 		chdr[1] = htons(*type);
-		*type = (unsigned short)sysctl_caqm_tpid;
+		*type = CONFIG_ETH_P_CAQM;
 	}
 #endif
-	return 0;
+}
+
+static inline bool is_caqm_out_enable(struct sk_buff *skb,
+				   struct net_device *dev)
+
+{
+#ifdef CONFIG_ETH_CAQM
+	struct skb_caqm_info *cinfo = get_skb_caqm_info(skb);
+
+	if (!static_branch_unlikely(&sysctl_caqm_enable))
+		return false;
+
+	// If the nic is not configed, the output packet has no caqm header
+	if ((sysctl_caqm_filter_nics & (1UL << dev->ifindex)) == 0)
+		cinfo->send_en = 0;
+	if (cinfo->send_en)
+		return true;
+#endif
+	return false;
 }
 
 #endif /* _LINUX_IF_CAQM_H_ */
