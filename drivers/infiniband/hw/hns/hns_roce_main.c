@@ -1250,8 +1250,6 @@ static int hns_roce_setup_hca(struct hns_roce_dev *hr_dev)
 
 	INIT_LIST_HEAD(&hr_dev->qp_list);
 	spin_lock_init(&hr_dev->qp_list_lock);
-	INIT_LIST_HEAD(&hr_dev->dip_list);
-	spin_lock_init(&hr_dev->dip_list_lock);
 
 	INIT_LIST_HEAD(&hr_dev->uctx_list);
 	mutex_init(&hr_dev->uctx_list_mutex);
