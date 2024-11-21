@@ -291,12 +291,14 @@ bool ima_check_measured_appraised(struct file *file)
 	if ((ima_digest_list_actions & IMA_MEASURE) &&
 	    !(iint->flags & IMA_MEASURED)) {
 		pr_err("%s not measured\n", file_dentry(file)->d_name.name);
+		mutex_unlock(&iint->mutex);
 		return false;
 	}
 
 	if ((ima_digest_list_actions & IMA_APPRAISE) &&
 	    (!(iint->flags & IMA_APPRAISED))) {
 		pr_err("%s not appraised\n", file_dentry(file)->d_name.name);
+		mutex_unlock(&iint->mutex);
 		return false;
 	}
 
