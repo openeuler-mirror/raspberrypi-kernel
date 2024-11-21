@@ -262,6 +262,11 @@ static int hns_roce_query_device(struct ib_device *ib_dev,
 		props->max_srq_sge = hr_dev->caps.max_srq_sges;
 	}
 
+	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_LIMIT_BANK) {
+		props->max_cq >>= 1;
+		props->max_qp >>= 1;
+	}
+
 	if (hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_FRMR &&
 	    hr_dev->pci_dev->revision >= PCI_REVISION_ID_HIP09) {
 		props->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
@@ -598,6 +603,7 @@ static int hns_roce_alloc_ucontext(struct ib_ucontext *uctx,
 	mutex_unlock(&hr_dev->uctx_list_mutex);
 
 	hns_roce_register_uctx_debugfs(hr_dev, context);
+	hns_roce_get_cq_bankid_for_uctx(context);
 
 	return 0;
 
@@ -634,6 +640,7 @@ static void hns_roce_dealloc_ucontext(struct ib_ucontext *ibcontext)
 	    hr_dev->caps.flags & HNS_ROCE_CAP_FLAG_QP_RECORD_DB)
 		mutex_destroy(&context->page_mutex);
 
+	hns_roce_put_cq_bankid_for_uctx(context);
 	hns_roce_unregister_uctx_debugfs(context);
 
 	hns_roce_unregister_udca(hr_dev, context);
@@ -1368,6 +1375,17 @@ static void hns_roce_dealloc_dfx_cnt(struct hns_roce_dev *hr_dev)
 	kvfree(hr_dev->dfx_cnt);
 }
 
+static void hns_roce_free_dca_safe_buf(struct hns_roce_dev *hr_dev)
+{
+	if (!hr_dev->dca_safe_buf)
+		return;
+
+	dma_free_coherent(hr_dev->dev, PAGE_SIZE, hr_dev->dca_safe_buf,
+			  hr_dev->dca_safe_page);
+	hr_dev->dca_safe_page = 0;
+	hr_dev->dca_safe_buf = NULL;
+}
+
 int hns_roce_init(struct hns_roce_dev *hr_dev)
 {
 	struct device *dev = hr_dev->dev;
@@ -1480,6 +1498,8 @@ void hns_roce_exit(struct hns_roce_dev *hr_dev, bool bond_cleanup)
 	hns_roce_unregister_device(hr_dev, bond_cleanup);
 	hns_roce_dealloc_scc_param(hr_dev);
 	hns_roce_unregister_debugfs(hr_dev);
+
+	hns_roce_free_dca_safe_buf(hr_dev);
 
 	if (hr_dev->hw->hw_exit)
 		hr_dev->hw->hw_exit(hr_dev);

@@ -46,6 +46,7 @@ int hns_roce_alloc_scc_param(struct hns_roce_dev *hr_dev)
 	for (i = 0; i < HNS_ROCE_SCC_ALGO_TOTAL; i++) {
 		scc_param[i].algo_type = i;
 		scc_param[i].hr_dev = hr_dev;
+		mutex_init(&scc_param[i].scc_mutex);
 		INIT_DELAYED_WORK(&scc_param[i].scc_cfg_dwork,
 				  scc_param_config_work);
 	}
@@ -63,8 +64,10 @@ void hns_roce_dealloc_scc_param(struct hns_roce_dev *hr_dev)
 	if (!hr_dev->scc_param)
 		return;
 
-	for (i = 0; i < HNS_ROCE_SCC_ALGO_TOTAL; i++)
+	for (i = 0; i < HNS_ROCE_SCC_ALGO_TOTAL; i++) {
 		cancel_delayed_work_sync(&hr_dev->scc_param[i].scc_cfg_dwork);
+		mutex_destroy(&hr_dev->scc_param[i].scc_mutex);
+	}
 
 	kvfree(hr_dev->scc_param);
 	hr_dev->scc_param = NULL;
@@ -110,7 +113,13 @@ static ssize_t scc_attr_show(struct ib_device *ibdev, u32 port_num,
 
 	scc_param = &hr_dev->scc_param[scc_attr->algo_type];
 
-	memcpy(&val, (void *)scc_param + scc_attr->offset, scc_attr->size);
+	mutex_lock(&scc_param->scc_mutex);
+	if (scc_attr->offset == offsetof(typeof(*scc_param), lifespan))
+		val = scc_param->lifespan;
+	else
+		memcpy(&val, (void *)scc_param->latest_param + scc_attr->offset,
+		       scc_attr->size);
+	mutex_unlock(&scc_param->scc_mutex);
 
 	return sysfs_emit(buf, "%u\n", le32_to_cpu(val));
 }
@@ -141,14 +150,16 @@ static ssize_t scc_attr_store(struct ib_device *ibdev, u32 port_num,
 
 	attr_val = cpu_to_le32(val);
 	scc_param = &hr_dev->scc_param[scc_attr->algo_type];
+	mutex_lock(&scc_param->scc_mutex);
 	memcpy((void *)scc_param + scc_attr->offset, &attr_val,
 	       scc_attr->size);
+	mutex_unlock(&scc_param->scc_mutex);
 
 	/* lifespan is only used for driver */
 	if (scc_attr->offset >= offsetof(typeof(*scc_param), lifespan))
 		return count;
 
-	lifespan_jiffies = msecs_to_jiffies(scc_param->lifespan);
+	lifespan_jiffies = msecs_to_jiffies(le32_to_cpu(scc_param->lifespan));
 	exp_time = scc_param->timestamp + lifespan_jiffies;
 
 	if (time_is_before_eq_jiffies(exp_time)) {
@@ -193,11 +204,11 @@ static umode_t scc_attr_is_visible(struct kobject *kobj,
 	.max = _max,								\
 }
 
-#define HNS_PORT_DCQCN_CC_ATTR_RW(_name, NAME)				\
-	struct hns_port_cc_attr hns_roce_port_attr_dcqcn_##_name =	\
-	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_DCQCN,			\
-			HNS_ROCE_DCQCN_##NAME##_OFS,			\
-			HNS_ROCE_DCQCN_##NAME##_SZ,			\
+#define HNS_PORT_DCQCN_CC_ATTR_RW(_name, NAME)					\
+	static struct hns_port_cc_attr hns_roce_port_attr_dcqcn_##_name =	\
+	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_DCQCN,				\
+			HNS_ROCE_DCQCN_##NAME##_OFS,				\
+			HNS_ROCE_DCQCN_##NAME##_SZ,				\
 			0, HNS_ROCE_DCQCN_##NAME##_MAX)
 
 HNS_PORT_DCQCN_CC_ATTR_RW(ai, AI);
@@ -233,11 +244,11 @@ static const struct attribute_group dcqcn_cc_param_group = {
 	.is_visible = scc_attr_is_visible,
 };
 
-#define HNS_PORT_LDCP_CC_ATTR_RW(_name, NAME)				\
-	struct hns_port_cc_attr hns_roce_port_attr_ldcp_##_name =	\
-	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_LDCP,			\
-			HNS_ROCE_LDCP_##NAME##_OFS,			\
-			HNS_ROCE_LDCP_##NAME##_SZ,			\
+#define HNS_PORT_LDCP_CC_ATTR_RW(_name, NAME)					\
+	static struct hns_port_cc_attr hns_roce_port_attr_ldcp_##_name =	\
+	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_LDCP,				\
+			HNS_ROCE_LDCP_##NAME##_OFS,				\
+			HNS_ROCE_LDCP_##NAME##_SZ,				\
 			0, HNS_ROCE_LDCP_##NAME##_MAX)
 
 HNS_PORT_LDCP_CC_ATTR_RW(cwd0, CWD0);
@@ -264,7 +275,7 @@ static const struct attribute_group ldcp_cc_param_group = {
 };
 
 #define HNS_PORT_HC3_CC_ATTR_RW(_name, NAME)				\
-	struct hns_port_cc_attr hns_roce_port_attr_hc3_##_name =	\
+	static struct hns_port_cc_attr hns_roce_port_attr_hc3_##_name =	\
 	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_HC3,			\
 			HNS_ROCE_HC3_##NAME##_OFS,			\
 			HNS_ROCE_HC3_##NAME##_SZ,			\
@@ -298,7 +309,7 @@ static const struct attribute_group hc3_cc_param_group = {
 };
 
 #define HNS_PORT_DIP_CC_ATTR_RW(_name, NAME)				\
-	struct hns_port_cc_attr hns_roce_port_attr_dip_##_name =	\
+	static struct hns_port_cc_attr hns_roce_port_attr_dip_##_name =	\
 	__HNS_SCC_ATTR(_name, HNS_ROCE_SCC_ALGO_DIP,			\
 			HNS_ROCE_DIP_##NAME##_OFS,			\
 			HNS_ROCE_DIP_##NAME##_SZ,			\
