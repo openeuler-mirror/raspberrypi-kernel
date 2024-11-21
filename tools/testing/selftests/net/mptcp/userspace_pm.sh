@@ -5,7 +5,7 @@
 # code but we accept it.
 #shellcheck disable=SC2086
 
-# Some variables are used below but indirectly, see check_expected_one()
+# Some variables are used below but indirectly, see verify_*_event()
 #shellcheck disable=SC2034
 
 . "$(dirname "${0}")/mptcp_lib.sh"
@@ -54,14 +54,12 @@ ns1=""
 ns2=""
 ret=0
 test_name=""
-
-_printf() {
-	stdbuf -o0 -e0 printf "${@}"
-}
+# a bit more space: because we have more to display
+MPTCP_LIB_TEST_FORMAT="%02u %-68s"
 
 print_title()
 {
-	_printf "INFO: %s\n" "${1}"
+	mptcp_lib_pr_info "${1}"
 }
 
 # $1: test name
@@ -69,36 +67,29 @@ print_test()
 {
 	test_name="${1}"
 
-	_printf "%-68s" "${test_name}"
-}
-
-print_results()
-{
-	_printf "[%s]\n" "${1}"
+	mptcp_lib_print_title "${test_name}"
 }
 
 test_pass()
 {
-	print_results " OK "
+	mptcp_lib_pr_ok
 	mptcp_lib_result_pass "${test_name}"
 }
 
 test_skip()
 {
-	print_results "SKIP"
+	mptcp_lib_pr_skip
 	mptcp_lib_result_skip "${test_name}"
 }
 
 # $1: msg
 test_fail()
 {
-	print_results "FAIL"
-	ret=1
-
-	if [ -n "${1}" ]; then
-		_printf "\t%s\n" "${1}"
+	if [ ${#} -gt 0 ]
+	then
+		mptcp_lib_pr_fail "${@}"
 	fi
-
+	ret=${KSFT_FAIL}
 	mptcp_lib_result_fail "${test_name}"
 }
 
@@ -120,7 +111,7 @@ cleanup()
 
 	rm -rf $file $client_evts $server_evts
 
-	_printf "Done\n"
+	mptcp_lib_pr_info "Done"
 }
 
 trap cleanup EXIT
@@ -221,7 +212,7 @@ make_connection()
 	else
 		test_fail "Expected tokens (c:${client_token} - s:${server_token}) and server (c:${client_serverside} - s:${server_serverside})"
 		mptcp_lib_result_print_all_tap
-		exit 1
+		exit ${KSFT_FAIL}
 	fi
 
 	if [ "$is_v6" = "v6" ]
@@ -240,45 +231,16 @@ make_connection()
 	fi
 }
 
-# $1: var name ; $2: prev ret
-check_expected_one()
-{
-	local var="${1}"
-	local exp="e_${var}"
-	local prev_ret="${2}"
-
-	if [ "${!var}" = "${!exp}" ]
-	then
-		return 0
-	fi
-
-	if [ "${prev_ret}" = "0" ]
-	then
-		test_fail
-	fi
-
-	_printf "\tExpected value for '%s': '%s', got '%s'.\n" \
-		"${var}" "${!exp}" "${!var}"
-	return 1
-}
-
 # $@: all var names to check
 check_expected()
 {
-	local rc=0
-	local var
-
-	for var in "${@}"
-	do
-		check_expected_one "${var}" "${rc}" || rc=1
-	done
-
-	if [ ${rc} -eq 0 ]
+	if mptcp_lib_check_expected "${@}"
 	then
 		test_pass
 		return 0
 	fi
 
+	test_fail
 	return 1
 }
 
@@ -428,7 +390,7 @@ test_remove()
 	then
 		test_pass
 	else
-		test_fail
+		test_fail "unexpected type: ${type}"
 	fi
 
 	# RM_ADDR using an invalid addr id should result in no action
@@ -441,7 +403,7 @@ test_remove()
 	then
 		test_pass
 	else
-		test_fail
+		test_fail "unexpected type: ${type}"
 	fi
 
 	# RM_ADDR from the client to server machine
@@ -882,26 +844,11 @@ test_prio()
 
 verify_listener_events()
 {
-	local evt=$1
-	local e_type=$2
-	local e_family=$3
-	local e_saddr=$4
-	local e_sport=$5
-	local type
-	local family
-	local saddr
-	local sport
-
-	type=$(mptcp_lib_evts_get_info type $evt $e_type)
-	family=$(mptcp_lib_evts_get_info family $evt $e_type)
-	sport=$(mptcp_lib_evts_get_info sport $evt $e_type)
-	if [ $family ] && [ $family = $AF_INET6 ]; then
-		saddr=$(mptcp_lib_evts_get_info saddr6 $evt $e_type)
+	if mptcp_lib_verify_listener_events "${@}"; then
+		test_pass
 	else
-		saddr=$(mptcp_lib_evts_get_info saddr4 $evt $e_type)
+		test_fail
 	fi
-
-	check_expected "type" "family" "saddr" "sport"
 }
 
 test_listener()
