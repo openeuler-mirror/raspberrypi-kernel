@@ -79,7 +79,6 @@ struct ima_rot * __init ima_rot_init(void)
 			pr_info("%s initialized and taken as IMA RoT\n", ima_rots[i].name);
 			return &ima_rots[i];
 		}
-		pr_info("%s failed to self-initialize\n", ima_rots[i].name);
 	}
 
 	return NULL;
