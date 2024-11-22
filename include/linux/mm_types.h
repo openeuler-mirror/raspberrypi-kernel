@@ -788,9 +788,8 @@ struct mm_struct {
 		 */
 		unsigned long mm_cid_next_scan;
 #else
-		KABI_REPLACE(struct mm_cid __percpu *pcpu_cid,
-				struct mm_cid __percpu *pcpu_cid)
-		KABI_REPLACE(unsigned long mm_cid_next_scan, unsigned long mm_cid_next_scan)
+		KABI_DEPRECATE(struct mm_cid __percpu *, pcpu_cid)
+		KABI_DEPRECATE(unsigned long, mm_cid_next_scan)
 #endif
 #ifdef CONFIG_MMU
 		atomic_long_t pgtables_bytes;	/* size of all page tables */
