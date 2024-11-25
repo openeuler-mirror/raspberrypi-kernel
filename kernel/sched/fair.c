@@ -708,6 +708,13 @@ static inline u64 min_vruntime(u64 min_vruntime, u64 vruntime)
 static inline bool entity_before(const struct sched_entity *a,
 				 const struct sched_entity *b)
 {
+#ifdef CONFIG_BPF_SCHED
+	if (bpf_sched_enabled()) {
+		if (bpf_sched_cfs_tag_pick_next_entity(a, b) == 1)
+			return true;
+	}
+#endif
+
 	/*
 	 * Tiebreak on vruntime seems unnecessary since it can
 	 * hardly happen.
@@ -905,6 +912,13 @@ static int vruntime_eligible(struct cfs_rq *cfs_rq, u64 vruntime)
 
 int entity_eligible(struct cfs_rq *cfs_rq, struct sched_entity *se)
 {
+#ifdef CONFIG_BPF_SCHED
+	if (bpf_sched_enabled()) {
+		if (bpf_sched_cfs_tag_entity_eligible(se) == 1)
+			return 1;
+	}
+#endif
+
 	return vruntime_eligible(cfs_rq, se->vruntime);
 }
 
