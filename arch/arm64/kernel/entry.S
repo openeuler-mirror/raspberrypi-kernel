@@ -569,9 +569,69 @@ SYM_CODE_START_LOCAL(__bad_stack)
 SYM_CODE_END(__bad_stack)
 #endif /* CONFIG_VMAP_STACK */
 
+#ifdef CONFIG_FAST_SYSCALL
+	.macro check_esr_el1_ec_svc64
+	/* Only support SVC64 for now */
+	mrs	x20, esr_el1
+	lsr	w20, w20, #ESR_ELx_EC_SHIFT
+	cmp	x20, #ESR_ELx_EC_SVC64
+	.endm
+
+	.macro check_syscall_nr
+	cmp	x8, __NR_syscalls
+	.endm
+
+	.macro check_xcall_enable
+	/* x21 = task_struct->xcall_enable */
+	ldr_this_cpu	x20, __entry_task, x21
+	ldr	x21, [x20, #TSK_XCALL]
+	/* x20 = sc_no / 8 */
+	lsr	x20, x8, 3
+	ldr	x21, [x21, x20]
+	/* x8 = sc_no % 8 */
+	and	x8, x8, 7
+	mov	x20, 1
+	lsl	x20, x20, x8
+	and	x21, x21, x20
+	cmp	x21, 0
+	.endm
+
+	.macro check_xcall_pre_kernel_entry
+	stp	x20, x21, [sp, #0]
+	/* is ESR_ELx_EC_SVC64 */
+	check_esr_el1_ec_svc64
+	bne	.Lskip_xcall\@
+	/* x8 >= __NR_syscalls */
+	check_syscall_nr
+	bhs	.Lskip_xcall\@
+	str	x8, [sp, #16]
+	/* is xcall enabled */
+	check_xcall_enable
+	ldr	x8, [sp, #16]
+	beq	.Lskip_xcall\@
+	ldp	x20, x21, [sp, #0]
+	/* do xcall */
+	kernel_entry 0, 64
+	mov	x0, sp
+	bl	el0t_64_sync_handler
+	b	ret_to_user
+.Lskip_xcall\@:
+	ldp	x20, x21, [sp, #0]
+	.endm
+#endif
 
 	.macro entry_handler el:req, ht:req, regsize:req, label:req
 SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
+#ifdef CONFIG_FAST_SYSCALL
+	.if \el == 0 && \regsize == 64 && \label == sync
+	/* Only support el0 aarch64 sync exception */
+	alternative_if_not ARM64_HAS_XCALL
+		b .Lret_to_kernel_entry\@
+	alternative_else_nop_endif
+		check_xcall_pre_kernel_entry
+	.Lret_to_kernel_entry\@:
+	.endif
+#endif
 	kernel_entry \el, \regsize
 	mov	x0, sp
 	bl	el\el\ht\()_\regsize\()_\label\()_handler

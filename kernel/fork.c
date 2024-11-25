@@ -637,6 +637,10 @@ void free_task(struct task_struct *tsk)
 	if (smart_grid_enabled())
 		sched_grid_qos_free(tsk);
 #endif
+#ifdef CONFIG_FAST_SYSCALL
+	if (tsk->xcall_enable)
+		bitmap_free(tsk->xcall_enable);
+#endif
 	free_task_struct(tsk);
 }
 EXPORT_SYMBOL(free_task);
@@ -1254,6 +1258,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->last_mm_cid = -1;
 	tsk->mm_cid_active = 0;
 	tsk->migrate_from_cpu = -1;
+#endif
+
+#ifdef CONFIG_FAST_SYSCALL
+	tsk->xcall_enable = NULL;
 #endif
 	return tsk;
 
@@ -2416,6 +2424,15 @@ __latent_entropy struct task_struct *copy_process(
 	ftrace_graph_init_task(p);
 
 	rt_mutex_init_task(p);
+
+#ifdef CONFIG_FAST_SYSCALL
+	p->xcall_enable = bitmap_zalloc(__NR_syscalls, GFP_KERNEL);
+	if (!p->xcall_enable)
+		goto bad_fork_free;
+
+	if (current->xcall_enable)
+		bitmap_copy(p->xcall_enable, current->xcall_enable, __NR_syscalls);
+#endif
 
 #ifdef CONFIG_QOS_SCHED_DYNAMIC_AFFINITY
 	if (dynamic_affinity_enabled()) {

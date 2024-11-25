@@ -2375,6 +2375,26 @@ static void mpam_extra_caps(void)
 		__enable_mpam_hcr();
 }
 
+#ifdef CONFIG_FAST_SYSCALL
+static bool is_xcall_support;
+static int __init xcall_setup(char *str)
+{
+	is_xcall_support = true;
+	return 1;
+}
+__setup("xcall", xcall_setup);
+
+bool fast_syscall_enabled(void)
+{
+	return is_xcall_support;
+}
+
+static bool has_xcall_support(const struct arm64_cpu_capabilities *entry, int __unused)
+{
+	return is_xcall_support;
+}
+#endif
+
 static const struct arm64_cpu_capabilities arm64_features[] = {
 	{
 		.capability = ARM64_ALWAYS_BOOT,
@@ -2890,6 +2910,14 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64MMFR1_EL1, TWED, IMP)
+	},
+#endif
+#ifdef CONFIG_FAST_SYSCALL
+	{
+		.desc = "Xcall Support",
+		.capability = ARM64_HAS_XCALL,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_xcall_support,
 	},
 #endif
 	{},
