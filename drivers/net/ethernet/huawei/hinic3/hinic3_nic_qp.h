@@ -194,6 +194,9 @@ struct hinic3_rq_cqe {
 };
 
 struct hinic3_cqe_info {
+	u8 pkt_offset;
+	u8 rsvd[3];
+
 	u8 lro_num;
 	u8 vlan_offload;
 	u8 pkt_fmt;
@@ -230,8 +233,14 @@ struct hinic3_rq_normal_wqe {
 	u32 cqe_lo_addr;
 };
 
+struct hinic3_rq_compact_wqe {
+	u32 buf_hi_addr;
+	u32 buf_lo_addr;
+};
+
 struct hinic3_rq_wqe {
 	union {
+		struct hinic3_rq_compact_wqe compact_wqe;
 		struct hinic3_rq_normal_wqe normal_wqe;
 		struct hinic3_rq_extend_wqe extend_wqe;
 	};
@@ -286,8 +295,8 @@ struct hinic3_sq_wqe_combo {
 	struct hinic3_sq_bufdesc *bds_sec2;
 
 	u16 first_bds_num;
-	u32 wqe_type;
-	u32 task_type;
+	u8 wqe_type;
+	u8 task_type;
 
 	u16 wqebb_cnt;
 	u8 rsvd[2];

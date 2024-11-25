@@ -113,7 +113,7 @@ static u32 hinic3_rx_fill_wqe(struct hinic3_rxq *rxq)
 			/* use fixed len */
 			rq_wqe->extend_wqe.buf_desc.sge.len =
 					nic_dev->rx_buff_len;
-		} else {
+		} else if (rxq->rq->wqe_type == HINIC3_NORMAL_RQ_WQE) {
 			rq_wqe->normal_wqe.cqe_hi_addr =
 				upper_32_bits(rx_info->cqe_dma);
 			rq_wqe->normal_wqe.cqe_lo_addr =
@@ -153,10 +153,15 @@ static u32 hinic3_rx_fill_buffers(struct hinic3_rxq *rxq)
 				hinic3_hw_be32(upper_32_bits(dma_addr));
 			rq_wqe->extend_wqe.buf_desc.sge.lo_addr =
 				hinic3_hw_be32(lower_32_bits(dma_addr));
-		} else {
+		} else if (rxq->rq->wqe_type == HINIC3_NORMAL_RQ_WQE) {
 			rq_wqe->normal_wqe.buf_hi_addr =
 				hinic3_hw_be32(upper_32_bits(dma_addr));
 			rq_wqe->normal_wqe.buf_lo_addr =
+				hinic3_hw_be32(lower_32_bits(dma_addr));
+		} else {
+			rq_wqe->compact_wqe.buf_hi_addr =
+				hinic3_hw_be32(upper_32_bits(dma_addr));
+			rq_wqe->compact_wqe.buf_lo_addr =
 				hinic3_hw_be32(lower_32_bits(dma_addr));
 		}
 		rxq->next_to_update = (u16)((rxq->next_to_update + 1) & rxq->q_mask);
@@ -241,7 +246,7 @@ static void hinic3_reuse_rx_page(struct hinic3_rxq *rxq,
 
 static bool hinic3_add_rx_frag(struct hinic3_rxq *rxq,
 			       struct hinic3_rx_info *rx_info,
-			       struct sk_buff *skb, u32 size)
+			       struct sk_buff *skb, u32 size, u8 offset)
 {
 	struct page *page;
 	u8 *va;
@@ -260,7 +265,7 @@ static bool hinic3_add_rx_frag(struct hinic3_rxq *rxq,
 				      DMA_FROM_DEVICE);
 
 	if (size <= HINIC3_RX_HDR_SIZE && !skb_is_nonlinear(skb)) {
-		memcpy(__skb_put(skb, size), va,
+		memcpy(__skb_put(skb, size), va + offset,
 		       ALIGN(size, sizeof(long))); /*lint !e666*/
 
 		/* page is not reserved, we can reuse buffer as-is */
@@ -273,7 +278,7 @@ static bool hinic3_add_rx_frag(struct hinic3_rxq *rxq,
 	}
 
 	skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags, page,
-			(int)rx_info->page_offset, (int)size, rxq->buf_len);
+			(int)(rx_info->page_offset + offset), (int)size, rxq->buf_len);
 
 	/* avoid re-using remote pages */
 	if (unlikely(page_to_nid(page) != numa_node_id()))
@@ -291,26 +296,30 @@ static bool hinic3_add_rx_frag(struct hinic3_rxq *rxq,
 }
 
 static void packaging_skb(struct hinic3_rxq *rxq, struct sk_buff *head_skb,
-			  u8 sge_num, u32 pkt_len)
+			  u8 sge_num, u32 pkt_len, u8 pkt_offset)
 {
 	struct hinic3_rx_info *rx_info = NULL;
 	struct sk_buff *skb = NULL;
 	u8 frag_num = 0;
-	u32 size;
+	u32 frag_size;
 	u32 sw_ci;
-	u32 temp_pkt_len = pkt_len;
-	u8 temp_sge_num = sge_num;
+	u8 tmp_sge_num;
+	u32 tmp_pkt_len;
+	u8 tmp_pkt_offset;
 
 	sw_ci = rxq->cons_idx & rxq->q_mask;
 	skb = head_skb;
-	while (temp_sge_num) {
+	tmp_sge_num = sge_num;
+	tmp_pkt_len = pkt_len;
+	tmp_pkt_offset = pkt_offset;
+	while (tmp_sge_num) {
 		rx_info = &rxq->rx_info[sw_ci];
 		sw_ci = (sw_ci + 1) & rxq->q_mask;
-		if (unlikely(temp_pkt_len > rxq->buf_len)) {
-			size = rxq->buf_len;
-			temp_pkt_len -= rxq->buf_len;
+		if (unlikely(tmp_pkt_len + tmp_pkt_offset > rxq->buf_len)) {
+			frag_size = rxq->buf_len - tmp_pkt_offset;
+			tmp_pkt_len -= frag_size;
 		} else {
-			size = temp_pkt_len;
+			frag_size = tmp_pkt_len;
 		}
 
 		if (unlikely(frag_num == MAX_SKB_FRAGS)) {
@@ -322,12 +331,12 @@ static void packaging_skb(struct hinic3_rxq *rxq, struct sk_buff *head_skb,
 		}
 
 		if (unlikely(skb != head_skb)) {
-			head_skb->len += size;
-			head_skb->data_len += size;
+			head_skb->len += frag_size;
+			head_skb->data_len += frag_size;
 			head_skb->truesize += rxq->buf_len;
 		}
 
-		if (likely(hinic3_add_rx_frag(rxq, rx_info, skb, size))) {
+		if (likely(hinic3_add_rx_frag(rxq, rx_info, skb, frag_size, tmp_pkt_offset))) {
 			hinic3_reuse_rx_page(rxq, rx_info);
 		} else {
 			/* we are not reusing the buffer so unmap it */
@@ -337,7 +346,8 @@ static void packaging_skb(struct hinic3_rxq *rxq, struct sk_buff *head_skb,
 		/* clear contents of buffer_info */
 		rx_info->buf_dma_addr = 0;
 		rx_info->page = NULL;
-		temp_sge_num--;
+		tmp_sge_num--;
+		tmp_pkt_offset = 0; /* only first sge use offset */
 		frag_num++;
 	}
 }
@@ -354,6 +364,7 @@ static struct sk_buff *hinic3_fetch_rx_buffer(struct hinic3_rxq *rxq,
 	struct sk_buff *skb = NULL;
 	struct net_device *netdev = rxq->netdev;
 	u32 pkt_len = cqe_info->pkt_len;
+	u8 pkt_offset = cqe_info->pkt_offset;
 	u8 sge_num, skb_num;
 	u16 wqebb_cnt = 0;
 
@@ -361,7 +372,7 @@ static struct sk_buff *hinic3_fetch_rx_buffer(struct hinic3_rxq *rxq,
 	if (unlikely(!head_skb))
 		return NULL;
 
-	sge_num = HINIC3_GET_SGE_NUM(pkt_len, rxq);
+	sge_num = HINIC3_GET_SGE_NUM(pkt_len + pkt_offset, rxq);
 	if (likely(sge_num <= MAX_SKB_FRAGS))
 		skb_num = 1;
 	else
@@ -387,7 +398,7 @@ static struct sk_buff *hinic3_fetch_rx_buffer(struct hinic3_rxq *rxq,
 	prefetchw(head_skb->data);
 	wqebb_cnt = sge_num;
 
-	packaging_skb(rxq, head_skb, sge_num, pkt_len);
+	packaging_skb(rxq, head_skb, sge_num, pkt_len, pkt_offset);
 
 	rxq->cons_idx += wqebb_cnt;
 	rxq->delta += wqebb_cnt;
@@ -857,7 +868,7 @@ static int recv_one_pkt(struct hinic3_rxq *rxq, struct hinic3_cqe_info *cqe_info
 	(HINIC3_GET_RX_IP_TYPE(hinic3_hw_cpu32((cqe)->offload_type)) == \
 	 HINIC3_RX_IPV6_PKT ? LRO_PKT_HDR_LEN_IPV6 : LRO_PKT_HDR_LEN_IPV4)
 
-void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info)
+void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info, u8 cqe_mode)
 {
 	struct hinic3_rq_cqe *cqe = (struct hinic3_rq_cqe *)rx_cqe;
 	struct hinic3_cqe_info *info = (struct hinic3_cqe_info *)cqe_info;
@@ -880,15 +891,24 @@ void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info)
 	info->rss_hash_value = dw3;
 }
 
-void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info)
+void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info, u8 cqe_mode)
 {
 	struct hinic3_rq_cqe *cqe = (struct hinic3_rq_cqe *)rx_cqe;
 	struct hinic3_cqe_info *info = (struct hinic3_cqe_info *)cqe_info;
 	u32 dw0, dw1, dw2;
 
-	dw0 = hinic3_hw_cpu32(cqe->status);
-	dw1 = hinic3_hw_cpu32(cqe->vlan_len);
-	dw2 = hinic3_hw_cpu32(cqe->offload_type);
+	if (cqe_mode != HINIC3_RQ_CQE_INTEGRATE) {
+		dw0 = hinic3_hw_cpu32(cqe->status);
+		dw1 = hinic3_hw_cpu32(cqe->vlan_len);
+		dw2 = hinic3_hw_cpu32(cqe->offload_type);
+	} else {
+		/* When rx wqe is compact, cqe is integrated with packet by big endian,
+		 * explicit endian conversion is needed.
+		 */
+		dw0 = be32_to_cpu(cqe->status);
+		dw1 = be32_to_cpu(cqe->vlan_len);
+		dw2 = be32_to_cpu(cqe->offload_type);
+	}
 
 	info->cqe_type = RQ_COMPACT_CQE_STATUS_GET(dw0, CQE_TYPE);
 	info->csum_err = RQ_COMPACT_CQE_STATUS_GET(dw0, CSUM_ERR);
@@ -916,9 +936,28 @@ void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info)
 		info->lro_num = RQ_COMPACT_CQE_OFFLOAD_GET(dw2, NUM_LRO);
 		info->vlan_tag = RQ_COMPACT_CQE_OFFLOAD_GET(dw2, VLAN);
 	}
+	if (info->cqe_type == HINIC3_RQ_CQE_INTEGRATE) {
+		info->pkt_offset = info->cqe_len == RQ_COMPACT_CQE_16BYTE ?
+				      HINIC3_COMPACT_CQE_16B : HINIC3_COMPACT_CQE_8B;
+	}
 }
 
-static bool hinic3_rx_cqe_done(void *rx_queue, void **rx_cqe)
+static bool rx_integrated_cqe_done(void *rx_queue, void **rx_cqe)
+{
+	u16 sw_ci;
+	u16 hw_ci;
+	struct hinic3_rxq *rxq = rx_queue;
+
+	sw_ci = (u16)(rxq->cons_idx & rxq->q_mask);
+	hw_ci = hinic3_get_rq_hw_ci(rxq->rq);
+	if (hw_ci == sw_ci)
+		return false;
+
+	*rx_cqe = (u8 *)page_address(rxq->rx_info[sw_ci].page) + rxq->rx_info[sw_ci].page_offset;
+	return true;
+}
+
+static bool rx_separate_cqe_done(void *rx_queue, void **rx_cqe)
 {
 	u32 sw_ci, status = 0;
 	struct hinic3_rxq *rxq = rx_queue;
@@ -952,7 +991,7 @@ int hinic3_rx_poll(struct hinic3_rxq *rxq, int budget)
 		/* make sure we read rx_done before packet length */
 		rmb();
 
-		nic_dev->tx_rx_ops.rx_get_cqe_info(rx_cqe, &cqe_info);
+		nic_dev->tx_rx_ops.rx_get_cqe_info(rx_cqe, &cqe_info, nic_dev->cqe_mode);
 		if (recv_one_pkt(rxq, &cqe_info))
 			break;
 
@@ -991,7 +1030,13 @@ int hinic3_alloc_rxqs_res(struct hinic3_nic_dev *nic_dev, u16 num_rq,
 	u32 pkts;
 	u64 size;
 
-	nic_dev->tx_rx_ops.rx_cqe_done = hinic3_rx_cqe_done;
+	if (hinic3_get_rq_wqe_type(nic_dev->hwdev) == HINIC3_COMPACT_RQ_WQE) {
+		nic_dev->cqe_mode = HINIC3_RQ_CQE_INTEGRATE;
+		nic_dev->tx_rx_ops.rx_cqe_done = rx_integrated_cqe_done;
+	} else {
+		nic_dev->cqe_mode = HINIC3_RQ_CQE_SEPARATE;
+		nic_dev->tx_rx_ops.rx_cqe_done = rx_separate_cqe_done;
+	}
 
 	for (idx = 0; idx < num_rq; idx++) {
 		rqres = &rxqs_res[idx];
@@ -1003,23 +1048,26 @@ int hinic3_alloc_rxqs_res(struct hinic3_nic_dev *nic_dev, u16 num_rq,
 			goto err_out;
 		}
 
-		rqres->cqe_start_vaddr =
-			dma_zalloc_coherent(&nic_dev->pdev->dev, cqe_mem_size,
-					    &rqres->cqe_start_paddr,
-					    GFP_KERNEL);
-		if (!rqres->cqe_start_vaddr) {
-			kfree(rqres->rx_info);
-			nicif_err(nic_dev, drv, nic_dev->netdev,
-				  "Failed to alloc rxq%d cqe\n", idx);
-			goto err_out;
+		if (nic_dev->cqe_mode == HINIC3_RQ_CQE_SEPARATE) {
+			rqres->cqe_start_vaddr =
+				dma_zalloc_coherent(&nic_dev->pdev->dev, cqe_mem_size,
+						    &rqres->cqe_start_paddr,
+						    GFP_KERNEL);
+			if (!rqres->cqe_start_vaddr) {
+				kfree(rqres->rx_info);
+				nicif_err(nic_dev, drv, nic_dev->netdev,
+					  "Failed to alloc rxq%d cqe\n", idx);
+				goto err_out;
+			}
 		}
-
 		pkts = hinic3_rx_alloc_buffers(nic_dev, rq_depth,
 					       rqres->rx_info);
 		if (!pkts) {
-			dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
-					  rqres->cqe_start_vaddr,
-					  rqres->cqe_start_paddr);
+			if (nic_dev->cqe_mode == HINIC3_RQ_CQE_SEPARATE) {
+				dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
+						  rqres->cqe_start_vaddr,
+						  rqres->cqe_start_paddr);
+			}
 			kfree(rqres->rx_info);
 			nicif_err(nic_dev, drv, nic_dev->netdev,
 				  "Failed to alloc rxq%d rx buffers\n", idx);
@@ -1034,9 +1082,11 @@ err_out:
 		rqres = &rxqs_res[i];
 
 		hinic3_rx_free_buffers(nic_dev, rq_depth, rqres->rx_info);
-		dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
-				  rqres->cqe_start_vaddr,
-				  rqres->cqe_start_paddr);
+		if (nic_dev->cqe_mode == HINIC3_RQ_CQE_SEPARATE) {
+			dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
+					  rqres->cqe_start_vaddr,
+					  rqres->cqe_start_paddr);
+		}
 		kfree(rqres->rx_info);
 	}
 
@@ -1054,9 +1104,11 @@ void hinic3_free_rxqs_res(struct hinic3_nic_dev *nic_dev, u16 num_rq,
 		rqres = &rxqs_res[idx];
 
 		hinic3_rx_free_buffers(nic_dev, rq_depth, rqres->rx_info);
-		dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
-				  rqres->cqe_start_vaddr,
-				  rqres->cqe_start_paddr);
+		if (nic_dev->cqe_mode == HINIC3_RQ_CQE_SEPARATE) {
+			dma_free_coherent(&nic_dev->pdev->dev, cqe_mem_size,
+					  rqres->cqe_start_vaddr,
+					  rqres->cqe_start_paddr);
+		}
 		kfree(rqres->rx_info);
 	}
 }
@@ -1099,13 +1151,15 @@ int hinic3_configure_rxqs(struct hinic3_nic_dev *nic_dev, u16 num_rq,
 		rxq->rx_info = rqres->rx_info;
 
 		/* fill cqe */
-		cqe_va = (struct hinic3_rq_cqe *)rqres->cqe_start_vaddr;
-		cqe_pa = rqres->cqe_start_paddr;
-		for (idx = 0; idx < rq_depth; idx++) {
-			rxq->rx_info[idx].cqe = cqe_va;
-			rxq->rx_info[idx].cqe_dma = cqe_pa;
-			cqe_va++;
-			cqe_pa += sizeof(*rxq->rx_info->cqe);
+		if (nic_dev->cqe_mode == HINIC3_RQ_CQE_SEPARATE) {
+			cqe_va = (struct hinic3_rq_cqe *)rqres->cqe_start_vaddr;
+			cqe_pa = rqres->cqe_start_paddr;
+			for (idx = 0; idx < rq_depth; idx++) {
+				rxq->rx_info[idx].cqe = cqe_va;
+				rxq->rx_info[idx].cqe_dma = cqe_pa;
+				cqe_va++;
+				cqe_pa += sizeof(*rxq->rx_info->cqe);
+			}
 		}
 
 		rxq->rq = hinic3_get_nic_queue(nic_dev->hwdev, rxq->q_id,
