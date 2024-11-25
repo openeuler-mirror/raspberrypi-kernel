@@ -663,6 +663,53 @@ void irq_exit(void)
 	lockdep_hardirq_exit();
 }
 
+#ifdef CONFIG_FAST_IRQ
+void xint_enter_rcu(void)
+{
+	preempt_count_add(HARDIRQ_OFFSET);
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_hardirq_enter();
+
+	if (tick_nohz_full_cpu(smp_processor_id()) ||
+	    (is_idle_task(current) && (irq_count() == HARDIRQ_OFFSET)))
+		tick_irq_enter();
+
+	account_hardirq_enter(current);
+#endif
+}
+
+static inline void __xint_exit_rcu(void)
+{
+#ifndef __ARCH_IRQ_EXIT_IRQS_DISABLED
+	local_irq_disable();
+#else
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_assert_irqs_disabled();
+#endif
+#endif
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	account_hardirq_exit(current);
+#endif
+	preempt_count_sub(HARDIRQ_OFFSET);
+	if (!in_interrupt() && local_softirq_pending())
+		invoke_softirq();
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	tick_irq_exit();
+#endif
+}
+
+void xint_exit_rcu(void)
+{
+	__xint_exit_rcu();
+	/* must be last! */
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_hardirq_exit();
+#endif
+}
+#endif /* CONFIG_FAST_IRQ */
+
 /*
  * This function must run with irqs disabled!
  */

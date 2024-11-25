@@ -485,7 +485,9 @@ alternative_else_nop_endif
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	/* Ensure any device/NC reads complete */
+	.if \fast_mode == std
 	alternative_insn nop, "dmb sy", ARM64_WORKAROUND_1508412
+	.endif
 
 	eret
 	.endif
@@ -657,6 +659,60 @@ SYM_CODE_END(__bad_stack)
 	.endm
 #endif
 
+#ifdef CONFIG_FAST_IRQ
+.macro check_xint_pre_kernel_entry el:req, ht:req
+	stp	x0, x1, [sp, #0]
+	stp	x2, x3, [sp, #16]
+
+	ldr	x0, =irqnr_xint_map
+	/* get hpp irqnr */
+	mrs_s	x1, SYS_ICC_HPPIR1_EL1
+
+	/* xint hwirq can not exceed 1020 */
+	cmp     x1, 1020
+	b.ge	.Lskip_xint\@
+
+	/* x2 = irqnr % 8 */
+	and	x2, x1, #7
+	/* x3 = irqnr / 8 */
+	lsr	x3, x1, #3
+	/* x1 is the byte of irqnr in irqnr_xint_map */
+	ldr	x1, [x0, x3]
+
+	/* Get the check mask */
+	mov	x3, #1
+	/* x3 = 1 << (irqnr % 8) */
+	lsl	x3, x3, x2
+
+	/* x1 = x1 & x3 */
+	ands	x1, x1, x3
+	b.eq	.Lskip_xint\@
+
+	ldp	x0, x1, [sp, #0]
+	ldp	x2, x3, [sp, #16]
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_entry \el, 64, xint
+#else
+	kernel_entry \el, 64
+#endif
+	mov	x0, sp
+	bl	el\el\ht\()_64_xint_handler
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_exit \el, xint
+#else
+	.if	\el == 0
+	b	ret_to_user
+	.else
+	b	ret_to_kernel
+	.endif
+#endif
+
+.Lskip_xint\@:
+	ldp	x0, x1, [sp, #0]
+	ldp	x2, x3, [sp, #16]
+.endm
+#endif
+
 	.macro entry_handler el:req, ht:req, regsize:req, label:req
 SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 #ifdef CONFIG_FAST_SYSCALL
@@ -667,6 +723,15 @@ SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	alternative_else_nop_endif
 		check_xcall_pre_kernel_entry
 	.Lret_to_kernel_entry\@:
+	.endif
+#endif
+#ifdef CONFIG_FAST_IRQ
+	.if \regsize == 64 && \label == irq && (( \el == 0 && \ht == t) || (\el == 1 && \ht == h))
+	alternative_if_not ARM64_HAS_XINT
+		b .Lskip_check_xint\@
+	alternative_else_nop_endif
+		check_xint_pre_kernel_entry \el, \ht
+.Lskip_check_xint\@:
 	.endif
 #endif
 	kernel_entry \el, \regsize

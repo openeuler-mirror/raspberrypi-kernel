@@ -2395,6 +2395,24 @@ static bool has_xcall_support(const struct arm64_cpu_capabilities *entry, int __
 }
 #endif
 
+#ifdef CONFIG_FAST_IRQ
+bool is_xint_support;
+static int __init xint_setup(char *str)
+{
+	if (!cpus_have_cap(ARM64_HAS_GIC_CPUIF_SYSREGS))
+		return 1;
+
+	is_xint_support = true;
+	return 1;
+}
+__setup("xint", xint_setup);
+
+static bool has_xint_support(const struct arm64_cpu_capabilities *entry, int __unused)
+{
+	return is_xint_support;
+}
+#endif
+
 static const struct arm64_cpu_capabilities arm64_features[] = {
 	{
 		.capability = ARM64_ALWAYS_BOOT,
@@ -2918,6 +2936,14 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.capability = ARM64_HAS_XCALL,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_xcall_support,
+	},
+#endif
+#ifdef CONFIG_FAST_IRQ
+	{
+		.desc = "Xint Support",
+		.capability = ARM64_HAS_XINT,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_xint_support,
 	},
 #endif
 	{},
