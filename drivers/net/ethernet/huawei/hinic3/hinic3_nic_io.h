@@ -47,6 +47,8 @@ struct hinic3_nic_db {
 };
 
 struct hinic3_tx_rx_ops {
+	void (*tx_set_wqebb_cnt)(void *wqe_combo, u32 offload, u16 num_sge);
+	void (*tx_set_wqe_task)(void *wqe_combo, void *offload_info);
 	void (*rx_get_cqe_info)(void *rx_cqe, void *cqe_info);
 	bool (*rx_cqe_done)(void *rxq, void **rx_cqe);
 };

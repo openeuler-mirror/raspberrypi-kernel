@@ -13,7 +13,7 @@
 #include "hinic3_nic_qp.h"
 #include "hinic3_nic_io.h"
 
-#define VXLAN_OFFLOAD_PORT_LE 46354 /* big end is 4789 */
+#define VXLAN_OFFLOAD_PORT_LE 0xb512 /* big end is 4789 */
 
 #define COMPACET_WQ_SKB_MAX_LEN 16383
 
@@ -141,6 +141,14 @@ int hinic3_flush_txqs(struct net_device *netdev);
 
 void hinic3_set_txq_cos(struct hinic3_nic_dev *nic_dev, u16 start_qid,
 			u16 q_num, u8 cos);
+
+void hinic3_tx_set_wqebb_cnt(void *wqe_combo, u32 offload, u16 num_sge);
+
+void hinic3_tx_set_compact_offload_wqebb_cnt(void *wqe_combo, u32 offload, u16 num_sge);
+
+void hinic3_tx_set_wqe_task(void *wqe_combo, void *offload_info);
+
+void hinic3_tx_set_compact_offload_wqe_task(void *wqe_combo, void *offload_info);
 
 #ifdef static
 #undef static
