@@ -714,6 +714,55 @@ static void noinstr el0_fpac(struct pt_regs *regs, unsigned long esr)
 	exit_to_user_mode(regs);
 }
 
+#ifdef CONFIG_FAST_SYSCALL
+/*
+ * Copy from exit_to_user_mode_prepare
+ */
+static __always_inline void xcall_exit_to_user_mode_prepare(struct pt_regs *regs)
+{
+	unsigned long flags;
+
+	local_daif_mask();
+
+	flags = read_thread_flags();
+	if (unlikely(flags & _TIF_WORK_MASK))
+		do_notify_resume(regs, flags);
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_sys_exit();
+#endif
+}
+
+static __always_inline void xcall_exit_to_user_mode(struct pt_regs *regs)
+{
+	xcall_exit_to_user_mode_prepare(regs);
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	mte_check_tfsr_exit();
+	__exit_to_user_mode();
+#endif
+}
+
+/* Copy from el0_sync */
+static void noinstr el0_xcall(struct pt_regs *regs)
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	enter_from_user_mode(regs);
+#endif
+#ifndef CONFIG_SECURITY_FEATURE_BYPASS
+	cortex_a76_erratum_1463225_svc_handler();
+#endif
+	fp_user_discard();
+	local_daif_restore(DAIF_PROCCTX);
+	do_el0_svc(regs);
+	xcall_exit_to_user_mode(regs);
+}
+
+asmlinkage void noinstr el0t_64_xcall_handler(struct pt_regs *regs)
+{
+	el0_xcall(regs);
+}
+#endif
+
 asmlinkage void noinstr el0t_64_sync_handler(struct pt_regs *regs)
 {
 	unsigned long esr = read_sysreg(esr_el1);

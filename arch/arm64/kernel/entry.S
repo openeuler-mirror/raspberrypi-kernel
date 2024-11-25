@@ -195,8 +195,8 @@ alternative_cb_end
 #endif
 	.endm
 
-	.macro	kernel_entry, el, regsize = 64
-	.if	\el == 0
+	.macro	kernel_entry, el, regsize = 64, fast_mode = std
+	.if	\el == 0 && \fast_mode == std
 	alternative_insn nop, SET_PSTATE_DIT(1), ARM64_HAS_DIT
 	.endif
 	.if	\regsize == 32
@@ -228,12 +228,16 @@ alternative_cb_end
 	 * Ensure MDSCR_EL1.SS is clear, since we can unmask debug exceptions
 	 * when scheduling.
 	 */
+	.if \fast_mode == std
 	ldr	x19, [tsk, #TSK_TI_FLAGS]
 	disable_step_tsk x19, x20
+	.endif
 
 	/* Check for asynchronous tag check faults in user space */
+	.if \fast_mode == std
 	ldr	x0, [tsk, THREAD_SCTLR_USER]
 	check_mte_async_tcf x22, x23, x0
+	.endif
 
 #ifdef CONFIG_ARM64_PTR_AUTH
 alternative_if ARM64_HAS_ADDRESS_AUTH
@@ -257,14 +261,19 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 alternative_else_nop_endif
 #endif
 
+	.if \fast_mode == std
 	apply_ssbd 1, x22, x23
+	.endif
 
+	.if \fast_mode == std
 	mte_set_kernel_gcr x22, x23
+	.endif
 
 	/*
 	 * Any non-self-synchronizing system register updates required for
 	 * kernel entry should be placed before this point.
 	 */
+	.if \fast_mode == std
 alternative_if ARM64_MTE
 	isb
 	b	1f
@@ -273,6 +282,7 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 	isb
 alternative_else_nop_endif
 1:
+	.endif
 
 	scs_load_current
 	.else
@@ -296,9 +306,11 @@ alternative_else_nop_endif
 	add	x29, sp, #S_STACKFRAME
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
+.if \fast_mode == std
 alternative_if_not ARM64_HAS_PAN
 	bl	__swpan_entry_el\el
 alternative_else_nop_endif
+.endif
 #endif
 
 	stp	x22, x23, [sp, #S_PC]
@@ -332,7 +344,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, fast_mode = std
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -356,14 +368,18 @@ alternative_else_nop_endif
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
+.if \fast_mode == std
 alternative_if_not ARM64_HAS_PAN
 	bl	__swpan_exit_el\el
 alternative_else_nop_endif
+.endif
 #endif
 
 	.if	\el == 0
 	ldr	x23, [sp, #S_SP]		// load return stack pointer
 	msr	sp_el0, x23
+
+	.if \fast_mode == std
 	tst	x22, #PSR_MODE32_BIT		// native task?
 	b.eq	3f
 
@@ -378,11 +394,15 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
+	.endif
+
 	scs_save tsk
 
 	/* Ignore asynchronous tag check faults in the uaccess routines */
+	.if \fast_mode == std
 	ldr	x0, [tsk, THREAD_SCTLR_USER]
 	clear_mte_async_tcf x0
+	.endif
 
 #ifdef CONFIG_ARM64_PTR_AUTH
 alternative_if ARM64_HAS_ADDRESS_AUTH
@@ -404,9 +424,13 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 alternative_else_nop_endif
 #endif
 
+	.if \fast_mode == std
 	mte_set_user_gcr tsk, x0, x1
+	.endif
 
+	.if \fast_mode == std
 	apply_ssbd 0, x0, x1
+	.endif
 	.endif
 
 	msr	elr_el1, x21			// set up the return data
@@ -429,6 +453,7 @@ alternative_else_nop_endif
 
 	.if	\el == 0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
+	.if \fast_mode == std
 	alternative_insn "b .L_skip_tramp_exit_\@", nop, ARM64_UNMAP_KERNEL_AT_EL0
 
 	msr	far_el1, x29
@@ -441,15 +466,19 @@ alternative_else_nop_endif
 	br		x29
 
 .L_skip_tramp_exit_\@:
+	.endif
 #endif
+
 	ldr	lr, [sp, #S_LR]
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	/* This must be after the last explicit memory access */
+	.if \fast_mode == std
 alternative_if ARM64_WORKAROUND_SPECULATIVE_UNPRIV_LOAD
 	tlbi	vale1, xzr
 	dsb	nsh
 alternative_else_nop_endif
+	.endif
 	eret
 	.else
 	ldr	lr, [sp, #S_LR]
@@ -611,10 +640,18 @@ SYM_CODE_END(__bad_stack)
 	beq	.Lskip_xcall\@
 	ldp	x20, x21, [sp, #0]
 	/* do xcall */
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_entry 0, 64, xcall
+#else
 	kernel_entry 0, 64
+#endif
 	mov	x0, sp
-	bl	el0t_64_sync_handler
+	bl	el0t_64_xcall_handler
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_exit 0, xcall
+#else
 	b	ret_to_user
+#endif
 .Lskip_xcall\@:
 	ldp	x20, x21, [sp, #0]
 	.endm
