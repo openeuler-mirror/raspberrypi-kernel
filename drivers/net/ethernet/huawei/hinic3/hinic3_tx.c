@@ -218,29 +218,51 @@ static void get_inner_l4_info(struct sk_buff *skb, union hinic3_l4 *l4,
 	}
 }
 
-static int hinic3_tx_csum(struct hinic3_txq *txq, struct hinic3_sq_task *task,
-			  struct sk_buff *skb)
+static void get_inner_l3_l4_type(struct sk_buff *skb, union hinic3_ip *ip,
+				 union hinic3_l4 *l4,
+				 enum sq_l3_type *l3_type, u8 *l4_proto)
+{
+	unsigned char *exthdr = NULL;
+	__be16 frag_off = 0;
+
+	if (ip->v4->version == IP4_VERSION) {
+		*l3_type = IPV4_PKT_WITH_CHKSUM_OFFLOAD;
+		*l4_proto = ip->v4->protocol;
+	} else if (ip->v4->version == IP6_VERSION) {
+		*l3_type = IPV6_PKT;
+		exthdr = ip->hdr + sizeof(*ip->v6);
+		*l4_proto = ip->v6->nexthdr;
+		if (exthdr != l4->hdr)
+			ipv6_skip_exthdr(skb, (int)(exthdr - skb->data),
+					l4_proto, &frag_off);
+	} else {
+		*l3_type = UNKNOWN_L3TYPE;
+		*l4_proto = 0;
+	}
+}
+
+static int hinic3_tx_csum(struct hinic3_txq *txq, struct sk_buff *skb,
+			  struct hinic3_offload_info *offload_info,
+			  struct hinic3_queue_info *queue_info)
 {
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		return 0;
 
 	if (skb->encapsulation) {
 		union hinic3_ip ip;
+		union hinic3_l4 l4;
 		u8 l4_proto;
 
-		task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, TUNNEL_FLAG);
+		offload_info->encapsulation = 1;
 
 		ip.hdr = skb_network_header(skb);
 		if (ip.v4->version == IPV4_VERSION) {
 			l4_proto = ip.v4->protocol;
+			l4.hdr = skb_transport_header(skb);
 		} else if (ip.v4->version == IPV6_VERSION) {
-			union hinic3_l4 l4;
-			unsigned char *exthdr;
+			unsigned char *exthdr = NULL;
 			__be16 frag_off;
 
-#ifdef HAVE_OUTER_IPV6_TUNNEL_OFFLOAD
-			task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, OUT_L4_EN);
-#endif
 			exthdr = ip.hdr + sizeof(*ip.v6);
 			l4_proto = ip.v6->nexthdr;
 			l4.hdr = skb_transport_header(skb);
@@ -251,180 +273,139 @@ static int hinic3_tx_csum(struct hinic3_txq *txq, struct hinic3_sq_task *task,
 			l4_proto = IPPROTO_RAW;
 		}
 
+		if (l4_proto == IPPROTO_UDP)
+			queue_info->udp_dp_en = 1;
+
 		if (l4_proto != IPPROTO_UDP ||
 		    ((struct udphdr *)skb_transport_header(skb))->dest != VXLAN_OFFLOAD_PORT_LE) {
 			TXQ_STATS_INC(txq, unknown_tunnel_pkt);
-			/* Unsupport tunnel packet, disable csum offload */
 			skb_checksum_help(skb);
 			return 0;
 		}
 	}
 
-	task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, INNER_L4_EN);
+	offload_info->inner_l4_en = 1;
 
 	return 1;
 }
 
-static void get_inner_l3_l4_type(struct sk_buff *skb, union hinic3_ip *ip,
-				 union hinic3_l4 *l4,
-				 enum sq_l3_type *l3_type, u8 *l4_proto)
-{
-	unsigned char *exthdr = NULL;
-
-	if (ip->v4->version == IP4_VERSION) {
-		*l3_type = IPV4_PKT_WITH_CHKSUM_OFFLOAD;
-		*l4_proto = ip->v4->protocol;
-
-#ifdef HAVE_OUTER_IPV6_TUNNEL_OFFLOAD
-		/* inner_transport_header is wrong in centos7.0 and suse12.1 */
-		l4->hdr = ip->hdr + ((u8)ip->v4->ihl << IP_HDR_IHL_UNIT_SHIFT);
-#endif
-	} else if (ip->v4->version == IP6_VERSION) {
-		*l3_type = IPV6_PKT;
-		exthdr = ip->hdr + sizeof(*ip->v6);
-		*l4_proto = ip->v6->nexthdr;
-		if (exthdr != l4->hdr) {
-			__be16 frag_off = 0;
-#ifndef HAVE_OUTER_IPV6_TUNNEL_OFFLOAD
-			ipv6_skip_exthdr(skb, (int)(exthdr - skb->data),
-					 l4_proto, &frag_off);
-#else
-			int pld_off = 0;
-
-			pld_off = ipv6_skip_exthdr(skb,
-						   (int)(exthdr - skb->data),
-						   l4_proto, &frag_off);
-			l4->hdr = skb->data + pld_off;
-#endif
-		}
-	} else {
-		*l3_type = UNKNOWN_L3TYPE;
-		*l4_proto = 0;
-	}
-}
-
-static void hinic3_set_tso_info(struct hinic3_sq_task *task, u32 *queue_info,
+static void hinic3_set_tso_info(struct hinic3_offload_info *offload_info,
+				struct hinic3_queue_info *queue_info,
 				enum sq_l4offload_type l4_offload,
 				u32 offset, u32 mss)
 {
 	if (l4_offload == TCP_OFFLOAD_ENABLE) {
-		*queue_info |= SQ_CTRL_QUEUE_INFO_SET(1U, TSO);
-		task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, INNER_L4_EN);
+		queue_info->tso = 1;
+		offload_info->inner_l4_en = 1;
 	} else if (l4_offload == UDP_OFFLOAD_ENABLE) {
-		*queue_info |= SQ_CTRL_QUEUE_INFO_SET(1U, UFO);
-		task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, INNER_L4_EN);
+		queue_info->ufo = 1;
+		offload_info->inner_l4_en = 1;
 	}
 
 	/* Default enable L3 calculation */
-	task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, INNER_L3_EN);
+	offload_info->inner_l3_en = 1;
 
-	*queue_info |= SQ_CTRL_QUEUE_INFO_SET(offset >> 1, PLDOFF);
+	queue_info->payload_offset = (u8)(offset >> 1);
 
 	/* set MSS value */
-	*queue_info = SQ_CTRL_QUEUE_INFO_CLEAR(*queue_info, MSS);
-	*queue_info |= SQ_CTRL_QUEUE_INFO_SET(mss, MSS);
+	queue_info->mss = (u16)mss;
 }
 
-static int hinic3_tso(struct hinic3_sq_task *task, u32 *queue_info,
-		      struct sk_buff *skb)
+static inline void hinic3_inner_tso_offload(struct hinic3_offload_info *offload_info,
+					    struct hinic3_queue_info *queue_info,
+					    struct sk_buff *skb, union hinic3_ip ip,
+					    union hinic3_l4 l4)
 {
-	enum sq_l4offload_type l4_offload = OFFLOAD_DISABLE;
-	enum sq_l3_type l3_type;
-	union hinic3_ip ip;
-	union hinic3_l4 l4;
-	u32 offset = 0;
 	u8 l4_proto;
-	int err;
-
-	if (!skb_is_gso(skb))
-		return 0;
-
-	err = skb_cow_head(skb, 0);
-	if (err < 0)
-		return err;
-
-	if (skb->encapsulation) {
-		u32 gso_type = skb_shinfo(skb)->gso_type;
-		/* L3 checksum always enable */
-		task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, OUT_L3_EN);
-		task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, TUNNEL_FLAG);
-
-		l4.hdr = skb_transport_header(skb);
-		ip.hdr = skb_network_header(skb);
-
-		if (gso_type & SKB_GSO_UDP_TUNNEL_CSUM) {
-			l4.udp->check = ~csum_magic(&ip, IPPROTO_UDP);
-			task->pkt_info0 |= SQ_TASK_INFO0_SET(1U, OUT_L4_EN);
-		} else if (gso_type & SKB_GSO_UDP_TUNNEL) {
-#ifdef HAVE_OUTER_IPV6_TUNNEL_OFFLOAD
-			if (ip.v4->version == 6) {
-				l4.udp->check = ~csum_magic(&ip, IPPROTO_UDP);
-				task->pkt_info0 |=
-					SQ_TASK_INFO0_SET(1U, OUT_L4_EN);
-			}
-#endif
-		}
-
-		ip.hdr = skb_inner_network_header(skb);
-		l4.hdr = skb_inner_transport_header(skb);
-	} else {
-		ip.hdr = skb_network_header(skb);
-		l4.hdr = skb_transport_header(skb);
-	}
+	u32 offset = 0;
+	enum sq_l3_type l3_type;
+	enum sq_l4offload_type l4_offload = OFFLOAD_DISABLE;
 
 	get_inner_l3_l4_type(skb, &ip, &l4, &l3_type, &l4_proto);
 
 	if (l4_proto == IPPROTO_TCP)
 		l4.tcp->check = ~csum_magic(&ip, IPPROTO_TCP);
-#ifdef HAVE_IP6_FRAG_ID_ENABLE_UFO
-	else if (l4_proto == IPPROTO_UDP && ip.v4->version == 6)
-		task->ip_identify =
-			be32_to_cpu(skb_shinfo(skb)->ip6_frag_id);
-#endif
 
 	get_inner_l4_info(skb, &l4, l4_proto, &offset, &l4_offload);
 
-#ifdef HAVE_OUTER_IPV6_TUNNEL_OFFLOAD
-	u32 network_hdr_len;
-
-	if (unlikely(l3_type == UNKNOWN_L3TYPE))
-		network_hdr_len = 0;
-	else
-		network_hdr_len = l4.hdr - ip.hdr;
-
-	if (unlikely(!offset)) {
-		if (l3_type == UNKNOWN_L3TYPE)
-			offset = ip.hdr - skb->data;
-		else if (l4_offload == OFFLOAD_DISABLE)
-			offset = ip.hdr - skb->data + network_hdr_len;
-	}
-#endif
-
-	hinic3_set_tso_info(task, queue_info, l4_offload, offset,
+	hinic3_set_tso_info(offload_info, queue_info, l4_offload, offset,
 			    skb_shinfo(skb)->gso_size);
+}
 
+static int hinic3_tso(struct hinic3_offload_info *offload_info,
+		      struct hinic3_queue_info *queue_info, struct sk_buff *skb)
+{
+	union hinic3_ip ip;
+	union hinic3_l4 l4;
+	u8 l4_proto;
+
+	if (!skb_is_gso(skb))
+		return 0;
+
+	if (skb_cow_head(skb, 0) < 0)
+		return -EINVAL;
+
+	l4.hdr = skb_transport_header(skb);
+	ip.hdr = skb_network_header(skb);
+	if (skb->encapsulation) {
+		u32 gso_type = skb_shinfo(skb)->gso_type;
+		/* L3 checksum always enable */
+		offload_info->out_l3_en = 1;
+		offload_info->encapsulation = 1;
+
+		if (gso_type & SKB_GSO_UDP_TUNNEL_CSUM) {
+			l4.udp->check = ~csum_magic(&ip, IPPROTO_UDP);
+			offload_info->out_l4_en = 1;
+		}
+
+		if (ip.v4->version == IPV4_VERSION) {
+			l4_proto = ip.v4->protocol;
+		} else if (ip.v4->version == IPV6_VERSION) {
+			union hinic3_l4 l4_ptr;
+			unsigned char *exthdr = 0;
+			__be16 frag_off;
+
+			exthdr = ip.hdr + sizeof(*ip.v6);
+			l4_proto = ip.v6->nexthdr;
+			l4_ptr.hdr = skb_transport_header(skb);
+			if (l4_ptr.hdr != exthdr)
+				ipv6_skip_exthdr(skb, exthdr - skb->data, &l4_proto, &frag_off);
+		} else {
+			l4_proto = IPPROTO_RAW;
+		}
+
+		if (l4_proto == IPPROTO_UDP)
+			queue_info->udp_dp_en = 1;
+
+		ip.hdr = skb_inner_network_header(skb);
+		l4.hdr = skb_inner_transport_header(skb);
+	}
+	hinic3_inner_tso_offload(offload_info, queue_info, skb, ip, l4);
 	return 1;
 }
 
-static u32 hinic3_tx_offload(struct sk_buff *skb, struct hinic3_sq_task *task,
-			     u32 *queue_info, struct hinic3_txq *txq)
+static inline void hinic3_set_vlan_tx_offload(struct hinic3_offload_info *offload_info,
+					      u16 vlan_tag, u8 vlan_type)
+{
+	offload_info->vlan1_tag = vlan_tag;
+	offload_info->vlan_sel = vlan_type;
+	offload_info->vlan_valid = 1;
+}
+
+u32 hinic3_tx_offload(struct sk_buff *skb, struct hinic3_offload_info *offload_info,
+		      struct hinic3_queue_info *queue_info, struct hinic3_txq *txq)
 {
 	u32 offload = 0;
 	int tso_cs_en;
 
-	task->pkt_info0 = 0;
-	task->ip_identify = 0;
-	task->pkt_info2 = 0;
-	task->vlan_offload = 0;
-
-	tso_cs_en = hinic3_tso(task, queue_info, skb);
+	tso_cs_en = hinic3_tso(offload_info, queue_info, skb);
 	if (tso_cs_en < 0) {
 		offload = TX_OFFLOAD_INVALID;
 		return offload;
 	} else if (tso_cs_en) {
 		offload |= TX_OFFLOAD_TSO;
 	} else {
-		tso_cs_en = hinic3_tx_csum(txq, task, skb);
+		tso_cs_en = hinic3_tx_csum(txq, skb, offload_info, queue_info);
 		if (tso_cs_en)
 			offload |= TX_OFFLOAD_CSUM;
 	}
@@ -432,13 +413,12 @@ static u32 hinic3_tx_offload(struct sk_buff *skb, struct hinic3_sq_task *task,
 #define VLAN_INSERT_MODE_MAX 5
 	if (unlikely(skb_vlan_tag_present(skb))) {
 		/* select vlan insert mode by qid, default 802.1Q Tag type */
-		hinic3_set_vlan_tx_offload(task, skb_vlan_tag_get(skb),
+		hinic3_set_vlan_tx_offload(offload_info, skb_vlan_tag_get(skb),
 					   txq->q_id % VLAN_INSERT_MODE_MAX);
 		offload |= TX_OFFLOAD_VLAN;
 	}
 
-	if (unlikely(SQ_CTRL_QUEUE_INFO_GET(*queue_info, PLDOFF) >
-		     MAX_PAYLOAD_OFFSET)) {
+	if (unlikely(queue_info->payload_offset > MAX_PAYLOAD_OFFSET)) {
 		offload = TX_OFFLOAD_INVALID;
 		return offload;
 	}
@@ -498,26 +478,23 @@ static inline int hinic3_maybe_stop_tx(struct hinic3_txq *txq, u16 wqebb_cnt)
 
 static u16 hinic3_set_wqe_combo(struct hinic3_txq *txq,
 				struct hinic3_sq_wqe_combo *wqe_combo,
-				u32 offload, u16 num_sge, u16 *curr_pi)
+				u16 num_sge, u16 *curr_pi)
 {
 	void *second_part_wqebbs_addr = NULL;
 	void *wqe = NULL;
 	u16 first_part_wqebbs_num, tmp_pi;
 
 	wqe_combo->ctrl_bd0 = hinic3_get_sq_one_wqebb(txq->sq, curr_pi);
-	if (!offload && num_sge == 1) {
+	if (wqe_combo->wqebb_cnt == 1) {
 		wqe_combo->wqe_type = SQ_WQE_COMPACT_TYPE;
+		wqe_combo->task_type = SQ_WQE_TASKSECT_4BYTES;
+		wqe_combo->task = (struct hinic3_sq_task *)&wqe_combo->ctrl_bd0->queue_info;
 		return hinic3_get_and_update_sq_owner(txq->sq, *curr_pi, 1);
 	}
 
 	wqe_combo->wqe_type = SQ_WQE_EXTENDED_TYPE;
-
-	if (offload) {
-		wqe_combo->task = hinic3_get_sq_one_wqebb(txq->sq, &tmp_pi);
-		wqe_combo->task_type = SQ_WQE_TASKSECT_16BYTES;
-	} else {
-		wqe_combo->task_type = SQ_WQE_TASKSECT_46BITS;
-	}
+	wqe_combo->task_type = SQ_WQE_TASKSECT_16BYTES;
+	wqe_combo->task = hinic3_get_sq_one_wqebb(txq->sq, &tmp_pi);
 
 	if (num_sge > 1) {
 		/* first wqebb contain bd0, and bd size is equal to sq wqebb
@@ -531,52 +508,132 @@ static u16 hinic3_set_wqe_combo(struct hinic3_txq *txq,
 		wqe_combo->first_bds_num = first_part_wqebbs_num;
 	}
 
-	return hinic3_get_and_update_sq_owner(txq->sq, *curr_pi,
-						num_sge + (u16)!!offload);
+	return hinic3_get_and_update_sq_owner(txq->sq, *curr_pi, wqe_combo->wqebb_cnt);
 }
+
+static void hinic3_set_wqe_queue_info(struct hinic3_sq_wqe_combo *wqe_combo,
+				      struct hinic3_queue_info *queue_info)
+{
+	u32 *qsf = NULL;
+	u32 *ctrl_len = &wqe_combo->ctrl_bd0->ctrl_len;
+
+	if (wqe_combo->wqe_type == SQ_WQE_EXTENDED_TYPE) {
+		qsf = &wqe_combo->ctrl_bd0->queue_info;
+		*qsf = SQ_CTRL_QUEUE_INFO_SET(1, UC) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->sctp, SCTP) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->udp_dp_en, UDP_DP_EN) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->tso, TSO) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->ufo, UFO) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->payload_offset, PLDOFF) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->pkt_type, PKT_TYPE) |
+		       SQ_CTRL_QUEUE_INFO_SET(queue_info->mss, MSS);
+
+		if (SQ_CTRL_QUEUE_INFO_GET(*qsf, MSS) == 0) {
+			*qsf |= SQ_CTRL_QUEUE_INFO_SET(TX_MSS_DEFAULT, MSS);
+		} else if (SQ_CTRL_QUEUE_INFO_GET(*qsf, MSS) < TX_MSS_MIN) {
+			/* mss should not less than 80 */
+			*qsf = SQ_CTRL_QUEUE_INFO_CLEAR(*qsf, MSS);
+			*qsf |= SQ_CTRL_QUEUE_INFO_SET(TX_MSS_MIN, MSS);
+		}
+
+		*qsf = hinic3_hw_be32(*qsf);
+	} else {
+		*ctrl_len |= SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->sctp, SCTP) |
+			     SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->udp_dp_en, UDP_DP_EN) |
+			     SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->tso, TSO) |
+			     SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->ufo, UFO) |
+			     SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->payload_offset, PLDOFF) |
+			     SQ_CTRL_15BIT_QUEUE_INFO_SET(queue_info->pkt_type, PKT_TYPE);
+	}
+}
+
+void hinic3_tx_set_wqebb_cnt(void *wqe_combo, u32 offload, u16 num_sge)
+{
+	struct hinic3_sq_wqe_combo *wqe = (struct hinic3_sq_wqe_combo *)wqe_combo;
+
+	wqe->wqebb_cnt = num_sge + 1;
+	if (!offload && num_sge == 1)
+		wqe->wqebb_cnt -= 1;
+}
+
+void hinic3_tx_set_compact_offload_wqebb_cnt(void *wqe_combo, u32 offload, u16 num_sge)
+{
+	struct hinic3_sq_wqe_combo *wqe = (struct hinic3_sq_wqe_combo *)wqe_combo;
+
+	wqe->wqebb_cnt = num_sge + 1;
+	if (!(offload & TX_OFFLOAD_TSO) && num_sge == 1)
+		wqe->wqebb_cnt -= 1;
+}
+
+void hinic3_tx_set_wqe_task(void *wqe_combo, void *offload_info)
+{
+	struct hinic3_sq_wqe_combo *wqe = (struct hinic3_sq_wqe_combo *)wqe_combo;
+	struct hinic3_offload_info *offload = (struct hinic3_offload_info *)offload_info;
+	struct hinic3_sq_task *task = wqe->task;
+
+	task->pkt_info0 = 0;
+	task->pkt_info0 |= SQ_TASK_INFO0_SET(offload->inner_l4_en, INNER_L4_EN);
+	task->pkt_info0 |= SQ_TASK_INFO0_SET(offload->inner_l3_en, INNER_L3_EN);
+	task->pkt_info0 |= SQ_TASK_INFO0_SET(offload->encapsulation, TUNNEL_FLAG);
+	task->pkt_info0 |= SQ_TASK_INFO0_SET(offload->out_l3_en, OUT_L3_EN);
+	task->pkt_info0 |= SQ_TASK_INFO0_SET(offload->out_l4_en, OUT_L4_EN);
+	task->pkt_info0 = hinic3_hw_be32(task->pkt_info0);
+
+	if (wqe->task_type == SQ_WQE_TASKSECT_16BYTES) {
+		task->ip_identify = 0;
+		task->pkt_info2 = 0;
+		task->vlan_offload = 0;
+
+		task->vlan_offload = SQ_TASK_INFO3_SET(offload->vlan1_tag, VLAN_TAG) |
+				     SQ_TASK_INFO3_SET(offload->vlan_sel, VLAN_TYPE) |
+				     SQ_TASK_INFO3_SET(offload->vlan_valid, VLAN_TAG_VALID);
+		task->vlan_offload = hinic3_hw_be32(task->vlan_offload);
+	}
+}
+
+void hinic3_tx_set_compact_offload_wqe_task(void *wqe_combo, void *offload_info)
+{
+	struct hinic3_sq_wqe_combo *wqe = (struct hinic3_sq_wqe_combo *)wqe_combo;
+	struct hinic3_offload_info *offload = (struct hinic3_offload_info *)offload_info;
+	struct hinic3_sq_task *task = wqe->task;
+
+	task->pkt_info0 = 0;
+	wqe->task->pkt_info0 =
+		SQ_TASK_INFO_SET(offload->out_l3_en, OUT_L3_EN) |
+		SQ_TASK_INFO_SET(offload->out_l4_en, OUT_L4_EN) |
+		SQ_TASK_INFO_SET(offload->inner_l3_en, INNER_L3_EN) |
+		SQ_TASK_INFO_SET(offload->inner_l4_en, INNER_L4_EN) |
+		SQ_TASK_INFO_SET(offload->vlan_valid, VLAN_VALID) |
+		SQ_TASK_INFO_SET(offload->vlan_sel, VLAN_SEL) |
+		SQ_TASK_INFO_SET(offload->vlan1_tag, VLAN_TAG);
+	if (wqe->task_type == SQ_WQE_TASKSECT_16BYTES) {
+		wqe->task->ip_identify = 0;
+		wqe->task->pkt_info2 = 0;
+		wqe->task->vlan_offload = 0;
+	}
+	task->pkt_info0 = hinic3_hw_be32(task->pkt_info0);
+}
+
 
 /* *
  * hinic3_prepare_sq_ctrl - init sq wqe cs
  * @nr_descs: total sge_num, include bd0 in cs
  */
 static void hinic3_prepare_sq_ctrl(struct hinic3_sq_wqe_combo *wqe_combo,
-				   u32 queue_info, int nr_descs, u16 owner)
+				   struct hinic3_queue_info *queue_info, int nr_descs, u16 owner)
 {
 	struct hinic3_sq_wqe_desc *wqe_desc = wqe_combo->ctrl_bd0;
 
-	if (wqe_combo->wqe_type == SQ_WQE_COMPACT_TYPE) {
-		wqe_desc->ctrl_len |=
-		    SQ_CTRL_SET(SQ_NORMAL_WQE, DATA_FORMAT) |
-		    SQ_CTRL_SET(wqe_combo->wqe_type, EXTENDED) |
-		    SQ_CTRL_SET(owner, OWNER);
-
-		wqe_desc->ctrl_len = hinic3_hw_be32(wqe_desc->ctrl_len);
-		/* compact wqe queue_info will transfer to ucode */
-		wqe_desc->queue_info = 0;
-		return;
-	}
-
-	wqe_desc->ctrl_len |= SQ_CTRL_SET(nr_descs, BUFDESC_NUM) |
-			      SQ_CTRL_SET(wqe_combo->task_type, TASKSECT_LEN) |
-			      SQ_CTRL_SET(SQ_NORMAL_WQE, DATA_FORMAT) |
+	wqe_desc->ctrl_len |= SQ_CTRL_SET(SQ_NORMAL_WQE, DATA_FORMAT) |
 			      SQ_CTRL_SET(wqe_combo->wqe_type, EXTENDED) |
 			      SQ_CTRL_SET(owner, OWNER);
 
-	wqe_desc->ctrl_len = hinic3_hw_be32(wqe_desc->ctrl_len);
-
-	wqe_desc->queue_info = queue_info;
-	wqe_desc->queue_info |= SQ_CTRL_QUEUE_INFO_SET(1U, UC);
-
-	if (!SQ_CTRL_QUEUE_INFO_GET(wqe_desc->queue_info, MSS)) {
-		wqe_desc->queue_info |=
-		    SQ_CTRL_QUEUE_INFO_SET(TX_MSS_DEFAULT, MSS);
-	} else if (SQ_CTRL_QUEUE_INFO_GET(wqe_desc->queue_info, MSS) <
-		   TX_MSS_MIN) {
-		/* mss should not less than 80 */
-		wqe_desc->queue_info =
-		    SQ_CTRL_QUEUE_INFO_CLEAR(wqe_desc->queue_info, MSS);
-		wqe_desc->queue_info |= SQ_CTRL_QUEUE_INFO_SET(TX_MSS_MIN, MSS);
+	if (wqe_combo->wqe_type == SQ_WQE_EXTENDED_TYPE) {
+		wqe_desc->ctrl_len |= SQ_CTRL_SET(nr_descs, BUFDESC_NUM) |
+				      SQ_CTRL_SET(wqe_combo->task_type, TASKSECT_LEN);
 	}
+
+	hinic3_set_wqe_queue_info(wqe_combo, queue_info);
 
 	wqe_desc->queue_info = hinic3_hw_be32(wqe_desc->queue_info);
 }
@@ -587,12 +644,12 @@ static netdev_tx_t hinic3_send_one_skb(struct sk_buff *skb,
 {
 	struct hinic3_nic_dev *nic_dev = netdev_priv(netdev);
 	struct hinic3_sq_wqe_combo wqe_combo = {0};
+	struct hinic3_offload_info offload_info = {0};
+	struct hinic3_queue_info queue_info = {0};
 	struct hinic3_tx_info *tx_info = NULL;
-	struct hinic3_sq_task task;
-	u32 offload, queue_info = 0;
-	u16 owner = 0, pi = 0;
-	u16 wqebb_cnt, num_sge, valid_nr_frags;
+	u16 owner = 0, pi = 0, num_sge, valid_nr_frags;
 	bool find_zero_sge_len = false;
+	u32 offload;
 	int err, i;
 
 	if (unlikely(skb->len < MIN_SKB_LEN)) {
@@ -620,51 +677,40 @@ static netdev_tx_t hinic3_send_one_skb(struct sk_buff *skb,
 	num_sge = valid_nr_frags + 1;
 
 	/* assume need normal TS format wqe, task info need 1 wqebb */
-	wqebb_cnt = num_sge + 1;
-	if (unlikely(hinic3_maybe_stop_tx(txq, wqebb_cnt))) {
+	if (unlikely(hinic3_maybe_stop_tx(txq, num_sge + 1))) {
 		TXQ_STATS_INC(txq, busy);
 		return NETDEV_TX_BUSY;
 	}
 
-	offload = hinic3_tx_offload(skb, &task, &queue_info, txq);
+	offload = hinic3_tx_offload(skb, &offload_info, &queue_info, txq);
 	if (unlikely(offload == TX_OFFLOAD_INVALID)) {
 		TXQ_STATS_INC(txq, offload_cow_skb_err);
 		goto tx_drop_pkts;
-	} else if (!offload) {
-		/* no TS in current wqe */
-		wqebb_cnt -= 1;
-		if (unlikely(num_sge == 1 && skb->len > COMPACET_WQ_SKB_MAX_LEN))
-			goto tx_drop_pkts;
 	}
+	if (unlikely(!offload && num_sge == 1 && skb->len > COMPACET_WQ_SKB_MAX_LEN))
+		goto tx_drop_pkts;
 
-	owner = hinic3_set_wqe_combo(txq, &wqe_combo, offload, num_sge, &pi);
-	if (offload) {
-		/* ip6_frag_id is big endiant, not need to transfer */
-		wqe_combo.task->ip_identify = hinic3_hw_be32(task.ip_identify);
-		wqe_combo.task->pkt_info0 = hinic3_hw_be32(task.pkt_info0);
-		wqe_combo.task->pkt_info2 = hinic3_hw_be32(task.pkt_info2);
-		wqe_combo.task->vlan_offload =
-			hinic3_hw_be32(task.vlan_offload);
-	}
+	nic_dev->tx_rx_ops.tx_set_wqebb_cnt(&wqe_combo, offload, num_sge);
+	owner = hinic3_set_wqe_combo(txq, &wqe_combo, num_sge, &pi);
+	nic_dev->tx_rx_ops.tx_set_wqe_task(&wqe_combo, &offload_info);
 
 	tx_info = &txq->tx_info[pi];
 	tx_info->skb = skb;
-	tx_info->wqebb_cnt = wqebb_cnt;
+	tx_info->wqebb_cnt = wqe_combo.wqebb_cnt;
 	tx_info->valid_nr_frags = valid_nr_frags;
 
 	err = tx_map_skb(nic_dev, skb, valid_nr_frags, txq, tx_info,
 			 &wqe_combo);
 	if (err) {
-		hinic3_rollback_sq_wqebbs(txq->sq, wqebb_cnt, owner);
+		hinic3_rollback_sq_wqebbs(txq->sq, wqe_combo.wqebb_cnt, owner);
 		goto tx_drop_pkts;
 	}
 
 	get_pkt_stats(tx_info, skb);
 
-	hinic3_prepare_sq_ctrl(&wqe_combo, queue_info, num_sge, owner);
+	hinic3_prepare_sq_ctrl(&wqe_combo, &queue_info, num_sge, owner);
 
-	hinic3_write_db(txq->sq, txq->cos, SQ_CFLAG_DP,
-			hinic3_get_sq_local_pi(txq->sq));
+	hinic3_write_db(txq->sq, txq->cos, SQ_CFLAG_DP, hinic3_get_sq_local_pi(txq->sq));
 
 	return NETDEV_TX_OK;
 

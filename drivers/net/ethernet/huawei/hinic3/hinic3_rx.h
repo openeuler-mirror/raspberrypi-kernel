@@ -28,6 +28,12 @@
 
 #define HINIC3_HEADER_DATA_UNIT 2
 
+#define HINIC3_COMPACT_CQE_8B 8
+#define HINIC3_COMPACT_CQE_16B 16
+
+#define HINIC3_RQ_CQE_SEPARATE	0
+#define HINIC3_RQ_CQE_INTEGRATE	1
+
 struct hinic3_rxq_stats {
 	u64	packets;
 	u64	bytes;
@@ -150,9 +156,9 @@ void hinic3_rxq_get_stats(struct hinic3_rxq *rxq,
 
 void hinic3_rxq_clean_stats(struct hinic3_rxq_stats *rxq_stats);
 
-void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info);
+void hinic3_rx_get_cqe_info(void *rx_cqe, void *cqe_info, u8 cqe_mode);
 
-void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info);
+void hinic3_rx_get_compact_cqe_info(void *rx_cqe, void *cqe_info, u8 cqe_mode);
 
 void hinic3_rxq_check_work_handler(struct work_struct *work);
 

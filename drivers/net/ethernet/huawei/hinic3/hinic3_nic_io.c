@@ -35,7 +35,7 @@ MODULE_PARM_DESC(tx_coalescing_time, "TX CI coalescing parameter coalescing_time
 
 static unsigned char rq_wqe_type = HINIC3_NORMAL_RQ_WQE;
 module_param(rq_wqe_type, byte, 0444);
-MODULE_PARM_DESC(rq_wqe_type, "RQ WQE type 0-8Bytes, 1-16Bytes, 2-32Bytes (default=2)");
+MODULE_PARM_DESC(rq_wqe_type, "RQ WQE type 0-8Bytes, 1-16Bytes, 2-32Bytes (default=1)");
 
 /*lint +e806*/
 static u32 tx_drop_thd_on = HINIC3_DEAULT_DROP_THD_ON;
@@ -274,8 +274,15 @@ int hinic3_get_rq_wqe_type(void *hwdev)
 	/* rq_wqe_type is the configuration when the driver is installed,
 	 * but it may not be the actual configuration.
 	 */
-	if (rq_wqe_type != HINIC3_NORMAL_RQ_WQE && rq_wqe_type != HINIC3_EXTEND_RQ_WQE)
-		return HINIC3_NORMAL_RQ_WQE;
+	if (HINIC3_SUPPORT_RX_COMPACT_CQE(hwdev)) {
+		if (rq_wqe_type != HINIC3_COMPACT_RQ_WQE && rq_wqe_type != HINIC3_NORMAL_RQ_WQE &&
+		    rq_wqe_type != HINIC3_EXTEND_RQ_WQE) {
+			return HINIC3_NORMAL_RQ_WQE;
+		}
+	} else {
+		if (rq_wqe_type != HINIC3_NORMAL_RQ_WQE && rq_wqe_type != HINIC3_EXTEND_RQ_WQE)
+			return HINIC3_NORMAL_RQ_WQE;
+	}
 	return rq_wqe_type;
 }
 
@@ -289,7 +296,7 @@ static int hinic3_create_rq(struct hinic3_nic_io *nic_io, struct hinic3_io_queue
 	rq->msix_entry_idx = rq_msix_idx;
 
 	err = hinic3_wq_create(nic_io->hwdev, &rq->wq, rq_depth,
-			       (u16)BIT(HINIC3_RQ_WQEBB_SHIFT + rq_wqe_type));
+			       (u16)BIT(HINIC3_RQ_WQEBB_SHIFT + rq->wqe_type));
 	if (err) {
 		sdk_err(nic_io->dev_hdl, "Failed to create rx queue(%u) wq\n",
 			q_id);
@@ -774,6 +781,10 @@ void hinic3_rq_prepare_ctxt(struct hinic3_io_queue *rq, struct hinic3_rq_ctxt *r
 			RQ_CTXT_WQ_PAGE_SET(2, WQE_TYPE);
 		rq_ctxt->cqe_sge_len = RQ_CTXT_CQE_LEN_SET(1, CQE_LEN);
 		break;
+	case HINIC3_COMPACT_RQ_WQE:
+		/* use 8Byte WQE */
+		rq_ctxt->wq_pfn_hi_type_owner |= RQ_CTXT_WQ_PAGE_SET(3, WQE_TYPE);
+		break;
 	default:
 		pr_err("Invalid rq wqe type: %u", wqe_type);
 	}
@@ -985,6 +996,10 @@ static int init_rq_ci_ctxts(struct hinic3_nic_io *nic_io)
 		rq_attr.intr_idx = nic_io->rq[q_id].msix_entry_idx;
 		rq_attr.l2nic_rqn = q_id;
 		rq_attr.cqe_type = 0;
+		if (hinic3_get_rq_wqe_type(nic_io->hwdev) == HINIC3_COMPACT_RQ_WQE) {
+			rq_attr.cqe_type = 1;
+			rq_attr.ci_dma_base = HINIC3_CI_PADDR(nic_io->rq_ci_dma_base, q_id);
+		}
 
 		err = hinic3_set_rq_ci_ctx(nic_io, &rq_attr);
 		if (err != 0) {

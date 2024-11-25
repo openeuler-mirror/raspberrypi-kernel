@@ -47,7 +47,9 @@ struct hinic3_nic_db {
 };
 
 struct hinic3_tx_rx_ops {
-	void (*rx_get_cqe_info)(void *rx_cqe, void *cqe_info);
+	void (*tx_set_wqebb_cnt)(void *wqe_combo, u32 offload, u16 num_sge);
+	void (*tx_set_wqe_task)(void *wqe_combo, void *offload_info);
+	void (*rx_get_cqe_info)(void *rx_cqe, void *cqe_info, u8 cqe_mode);
 	bool (*rx_cqe_done)(void *rxq, void **rx_cqe);
 };
 
@@ -334,4 +336,5 @@ int hinic3_init_qps(void *hwdev, struct hinic3_dyna_qp_params *qp_params);
 void hinic3_deinit_qps(void *hwdev, struct hinic3_dyna_qp_params *qp_params);
 int hinic3_init_nicio_res(void *hwdev);
 void hinic3_deinit_nicio_res(void *hwdev);
+int hinic3_get_rq_wqe_type(void *hwdev);
 #endif

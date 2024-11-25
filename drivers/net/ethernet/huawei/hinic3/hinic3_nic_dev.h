@@ -247,6 +247,7 @@ struct hinic3_nic_dev {
 	struct hinic3_txq	*txqs;
 	struct hinic3_rxq	*rxqs;
 	struct hinic3_dyna_txrxq_params q_params;
+	u8 cqe_mode; /* rx_cqe */
 
 	u16			num_qp_irq;
 	struct irq_info		*qps_irq_info;
