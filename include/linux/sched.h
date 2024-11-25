@@ -2557,6 +2557,26 @@ struct sched_migrate_node {
 	int dst_cpu;
 	int dst_node;
 };
+
+struct bpf_sched_cpu_stats {
+	refcount_t usage;
+	unsigned int nr_running;
+	unsigned int cfs_nr_running;
+	unsigned int cfs_h_nr_running;
+	unsigned int cfs_idle_h_nr_running;
+	unsigned int rt_nr_running;
+	unsigned int rr_nr_running;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
+};
+
 #endif
 
 #ifdef CONFIG_SCHED_CORE
