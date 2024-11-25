@@ -35,6 +35,10 @@
 
 #include "irq-gic-common.h"
 
+#ifdef CONFIG_FAST_IRQ
+#include "../../../kernel/irq/internals.h"
+#endif
+
 #define GICD_INT_NMI_PRI	(GICD_INT_DEF_PRI & ~0x80)
 
 #define FLAGS_WORKAROUND_GICR_WAKER_MSM8996	(1ULL << 0)
@@ -1017,9 +1021,11 @@ static bool xint_transform(int irqno, enum xint_op op)
 	switch (op) {
 	case IRQ_TO_XINT:
 		set_bit(hwirq, irqnr_xint_map);
+		xint_add_debugfs_entry(irqno);
 		return true;
 	case XINT_TO_IRQ:
 		clear_bit(hwirq, irqnr_xint_map);
+		xint_remove_debugfs_entry(irqno);
 		return false;
 	case XINT_SET_CHECK:
 		return test_bit(hwirq, irqnr_xint_map);
