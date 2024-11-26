@@ -72,9 +72,11 @@ struct its_vpe {
 #else
 			}                       sgi_config[16];
 #endif
-			atomic_t vmapp_count;
 		};
 	};
+
+	/* Track the VPE being mapped */
+	atomic_t vmapp_count;
 
 	/*
 	 * Ensures mutual exclusion between affinity setting of the
