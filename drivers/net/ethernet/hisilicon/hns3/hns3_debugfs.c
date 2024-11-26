@@ -1097,6 +1097,8 @@ hns3_dbg_dev_specs(struct hnae3_handle *h, char *buf, int len, int *pos)
 	*pos += scnprintf(buf + *pos, len - *pos,
 			  "TX timeout threshold: %d seconds\n",
 			  dev->watchdog_timeo / HZ);
+	*pos += scnprintf(buf + *pos, len - *pos, "mac tunnel number: %u\n",
+			  dev_specs->tnl_num);
 	*pos += scnprintf(buf + *pos, len - *pos, "Hilink Version: %u\n",
 			  dev_specs->hilink_version);
 }
