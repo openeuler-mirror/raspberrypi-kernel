@@ -7,6 +7,7 @@
 #include <linux/module.h>
 #include <linux/sched.h>
 #include <linux/vmalloc.h>
+#include <linux/swiotlb.h>
 
 #include <asm/cacheflush.h>
 #include <asm/set_memory.h>
@@ -69,6 +70,7 @@ bool is_virtcca_cvm_world(void)
 {
 	return cvm_guest_enable && static_branch_likely(&cvm_tsi_present);
 }
+EXPORT_SYMBOL_GPL(is_virtcca_cvm_world);
 
 static int change_page_range_cvm(pte_t *ptep, unsigned long addr, void *data)
 {
@@ -118,4 +120,37 @@ int set_cvm_memory_encrypted(unsigned long addr, int numpages)
 int set_cvm_memory_decrypted(unsigned long addr, int numpages)
 {
 	return __set_memory_encrypted(addr, numpages, false);
+}
+
+/*
+ * struct io_tlb_no_swiotlb_mem - whether use the
+ * bounce buffer mechanism or not
+ * @for_alloc: %true if the pool is used for memory allocation.
+ *	Here it is set to %false, to force devices to use direct dma operations.
+ *
+ * @force_bounce: %true if swiotlb bouncing is forced.
+ *	Here it is set to %false, to force devices to use direct dma operations.
+ */
+static struct io_tlb_mem io_tlb_no_swiotlb_mem = {
+	.for_alloc = false,
+	.force_bounce = false,
+};
+
+void enable_swiotlb_for_cvm_dev(struct device *dev, bool enable)
+{
+	if (!is_virtcca_cvm_world())
+		return;
+
+	if (enable)
+		swiotlb_dev_init(dev);
+	else
+		dev->dma_io_tlb_mem = &io_tlb_no_swiotlb_mem;
+}
+EXPORT_SYMBOL_GPL(enable_swiotlb_for_cvm_dev);
+
+void swiotlb_unmap_notify(unsigned long paddr, unsigned long size)
+{
+	struct arm_smccc_res res;
+
+	arm_smccc_1_1_smc(SMC_TSI_SEC_MEM_UNMAP, paddr, size, &res);
 }

@@ -70,7 +70,7 @@
 #include <linux/virtio_config.h>
 #include <uapi/linux/virtio_mmio.h>
 #include <linux/virtio_ring.h>
-
+#include <linux/virtcca_cvm_domain.h>
 
 
 /* The alignment to use between consumer and producer parts of vring.
@@ -619,6 +619,7 @@ static int virtio_mmio_probe(struct platform_device *pdev)
 	unsigned long magic;
 	int rc;
 
+	enable_swiotlb_for_cvm_dev(&pdev->dev, true);
 	vm_dev = kzalloc(sizeof(*vm_dev), GFP_KERNEL);
 	if (!vm_dev)
 		return -ENOMEM;
