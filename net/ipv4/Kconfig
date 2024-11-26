@@ -647,6 +647,21 @@ config TCP_CONG_DCTCP
 	  For further details see:
 	    http://simula.stanford.edu/~alizade/Site/DCTCP_files/dctcp-final.pdf
 
+config TCP_CONG_CAQM
+	tristate "TCP Congestion-Aware Queue Management (CAQM)"
+	depends on ETH_CAQM
+	default n
+	help
+	  Enable CAQM (Congestion-Aware Queue Management) need switch and kernel
+	  support.
+	  -	switch need support caqm ethernet transport.
+	  - kernel need support caqm ethernet trasport.
+	  The algorithm is a credit-based congestion design which is inspired by
+	  XCP. The increase/decrease of cwnd is decided by the network device
+	  instead of the endhost.
+	  For further details of XCP, see:
+	    https://dl.acm.org/doi/pdf/10.1145/633025.633035
+
 config TCP_CONG_CDG
 	tristate "CAIA Delay-Gradient (CDG)"
 	default n
@@ -709,6 +724,9 @@ choice
 	config DEFAULT_DCTCP
 		bool "DCTCP" if TCP_CONG_DCTCP=y
 
+	config DEFAULT_CAQM
+		bool "CAQM" if TCP_CONG_CAQM=y
+
 	config DEFAULT_CDG
 		bool "CDG" if TCP_CONG_CDG=y
 
@@ -737,6 +755,7 @@ config DEFAULT_TCP_CONG
 	default "veno" if DEFAULT_VENO
 	default "reno" if DEFAULT_RENO
 	default "dctcp" if DEFAULT_DCTCP
+	default "caqm" if DEFAULT_CAQM
 	default "cdg" if DEFAULT_CDG
 	default "bbr" if DEFAULT_BBR
 	default "cubic"

@@ -25,6 +25,7 @@
 #include <net/pkt_sched.h>
 
 #include "dev.h"
+#include "sysctl_net_caqm.h"
 
 static int int_3600 = 3600;
 static int min_sndbuf = SOCK_MIN_SNDBUF;
@@ -579,6 +580,102 @@ static struct ctl_table net_core_table[] = {
 		.mode		= 0644,
 		.maxlen		= IFNAMSIZ,
 		.proc_handler	= set_default_qdisc
+	},
+#endif
+#ifdef CONFIG_ETH_CAQM
+	{
+		.procname	= "sysctl_caqm_cc_type",
+		.data		= &sysctl_caqm_cc_type,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= (void *)&sysctl_caqm_cc_type_max,
+	},
+	{
+		.procname	= "sysctl_caqm_debug_info",
+		.data		= &sysctl_caqm_debug_info,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sysctl_caqm_alpha_fx_8",
+		.data		= &sysctl_caqm_alpha_fx_8,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= (void *)&sysctl_caqm_alpha_fx_8_max,
+	},
+	{
+		.procname	= "sysctl_caqm_beta",
+		.data		= &sysctl_caqm_beta,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sysctl_caqm_min_cwnd",
+		.data		= &sysctl_caqm_min_cwnd,
+		.mode		= 0644,
+		.maxlen		= sizeof(unsigned int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= SYSCTL_INT_MAX,
+	},
+	{
+		.procname	= "sysctl_caqm_mtu_unit",
+		.data		= &sysctl_caqm_mtu_unit,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= (void *)&sysctl_caqm_mtu_unit_min,
+		.extra2		= (void *)&sysctl_caqm_mtu_unit_max,
+	},
+	{
+		.procname	= "sysctl_caqm_data_hint_unit",
+		.data		= &sysctl_caqm_data_hint_unit,
+		.mode		= 0644,
+		.maxlen		= sizeof(int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= (void *)&sysctl_caqm_data_hint_unit_max,
+	},
+	{
+		.procname	= "sysctl_caqm_ack_hint_unit",
+		.data		= &sysctl_caqm_ack_hint_unit,
+		.mode		= 0644,
+		.maxlen		= sizeof(unsigned int),
+		.proc_handler	= proc_douintvec_minmax,
+		.extra1		= SYSCTL_ONE,
+		.extra2		= (void *)&sysctl_caqm_ack_hint_unit_max,
+	},
+	{
+		.procname	= "sysctl_caqm_enable",
+		.data		= &sysctl_caqm_en_data,
+		.mode		= 0644,
+		.maxlen		= sizeof(u8),
+		.proc_handler	= proc_caqm_enable,
+	},
+	{
+		.procname	= "sysctl_caqm_filter_nics",
+		.data		= &sysctl_caqm_filter_nics,
+		.mode		= 0644,
+		.maxlen		= sizeof(unsigned long),
+		.proc_handler	= proc_dointvec_minmax,
+	},
+	{
+		.procname	= "sysctl_caqm_rtt_standard",
+		.data		= &sysctl_caqm_rtt_standard,
+		.mode		= 0644,
+		.maxlen		= sizeof(unsigned int),
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ONE,
 	},
 #endif
 	{

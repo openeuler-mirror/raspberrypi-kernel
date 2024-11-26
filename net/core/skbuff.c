@@ -1412,7 +1412,9 @@ static void __copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 #ifdef CONFIG_NET_SCHED
 	CHECK_SKB_FIELD(tc_index);
 #endif
-
+#ifdef CONFIG_ETH_CAQM
+	new->caqm_info = old->caqm_info;
+#endif
 }
 
 /*

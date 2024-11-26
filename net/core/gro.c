@@ -3,6 +3,7 @@
 #include <net/dst_metadata.h>
 #include <net/busy_poll.h>
 #include <trace/events/net.h>
+#include <linux/if_caqm.h>
 
 #define MAX_GRO_SKBS 8
 
@@ -129,6 +130,7 @@ int skb_gro_receive(struct sk_buff *p, struct sk_buff *skb)
 	lp = NAPI_GRO_CB(p)->last;
 	pinfo = skb_shinfo(lp);
 
+	caqm_update_hint_in_gro(skb, p);
 	if (headlen <= offset) {
 		skb_frag_t *frag;
 		skb_frag_t *frag2;
@@ -598,6 +600,7 @@ gro_result_t napi_gro_receive(struct napi_struct *napi, struct sk_buff *skb)
 {
 	gro_result_t ret;
 
+	skb_gro_caqm_untag(skb);
 	skb_mark_napi_id(skb, napi);
 	trace_napi_gro_receive_entry(skb);
 

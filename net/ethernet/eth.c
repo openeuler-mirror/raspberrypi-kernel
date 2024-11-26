@@ -62,6 +62,7 @@
 #include <net/gro.h>
 #include <linux/uaccess.h>
 #include <net/pkt_sched.h>
+#include <linux/if_caqm.h>
 
 /**
  * eth_header - create the Ethernet header
@@ -80,7 +81,11 @@ int eth_header(struct sk_buff *skb, struct net_device *dev,
 	       unsigned short type,
 	       const void *daddr, const void *saddr, unsigned int len)
 {
-	struct ethhdr *eth = skb_push(skb, ETH_HLEN);
+	struct ethhdr *eth;
+	#ifdef CONFIG_ETH_CAQM
+	caqm_add_eth_header(skb, &type, dev);
+	#endif
+	eth = skb_push(skb, ETH_HLEN);
 
 	if (type != ETH_P_802_3 && type != ETH_P_802_2)
 		eth->h_proto = htons(type);

@@ -153,6 +153,7 @@
 #include <linux/prandom.h>
 #include <linux/once_lite.h>
 #include <net/netdev_rx_queue.h>
+#include <linux/if_caqm.h>
 
 #include "dev.h"
 #include "net-sysfs.h"
@@ -3397,8 +3398,11 @@ __be16 skb_network_protocol(struct sk_buff *skb, int *depth)
 		eth = (struct ethhdr *)skb->data;
 		type = eth->h_proto;
 	}
-
-	return vlan_get_protocol_and_depth(skb, type, depth);
+	type = vlan_get_protocol_and_depth(skb, type, depth);
+#ifdef CONFIG_ETH_CAQM
+	type = caqm_get_protocol_and_depth(skb, type, depth);
+#endif
+	return type;
 }
 
 
@@ -5329,6 +5333,9 @@ static bool skb_pfmemalloc_protocol(struct sk_buff *skb)
 	case htons(ETH_P_IPV6):
 	case htons(ETH_P_8021Q):
 	case htons(ETH_P_8021AD):
+#ifdef CONFIG_ETH_CAQM
+	case htons(CONFIG_ETH_P_CAQM):
+#endif
 		return true;
 	default:
 		return false;
@@ -5401,6 +5408,14 @@ another_round:
 		if (unlikely(!skb))
 			goto out;
 	}
+
+#ifdef CONFIG_ETH_CAQM
+	if (eth_type_caqm(skb->protocol)) {
+		skb = skb_caqm_untag(skb);
+		if (unlikely(!skb))
+			goto out;
+	}
+#endif
 
 	if (skb_skip_tc_classify(skb))
 		goto skip_classify;
