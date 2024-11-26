@@ -656,6 +656,10 @@ static u64 get_max_boost_ratio(unsigned int cpu)
 	if (acpi_pstate_strict)
 		return 0;
 
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_ZHAOXIN ||
+	    boot_cpu_data.x86_vendor == X86_VENDOR_CENTAUR)
+		return 0;
+
 	cppc_get_highest_nominal_perf(cpu, &highest_perf, &nominal_perf);
 
 	if (!highest_perf || !nominal_perf) {
