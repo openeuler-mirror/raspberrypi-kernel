@@ -24,7 +24,8 @@
 
 #define SMMU_DOMAIN_IS_SAME     0x2
 
-int virtcca_attach_secure_dev(struct iommu_domain *domain, struct iommu_group *group);
+int virtcca_attach_secure_dev(struct iommu_domain *domain, struct iommu_group *group,
+	bool iommu_secure);
 
 u64 virtcca_get_iommu_device_msi_addr(struct iommu_group *iommu_group);
 int virtcca_iommu_group_set_dev_msi_addr(struct iommu_group *iommu_group, unsigned long *iova);

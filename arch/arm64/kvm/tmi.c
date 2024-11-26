@@ -269,12 +269,13 @@ EXPORT_SYMBOL(tmi_dev_delegate);
  * @vdev:	Device bdf number
  * @rd:	CVM handle
  * @smmu_id:	SMMU ID
+ * @smmu_vmid:	SMMU vmid
  */
-u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id)
+u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id, u64 smmu_vmid)
 {
 	struct arm_smccc_res res;
 
-	arm_smccc_1_1_smc(TMI_TMM_DEV_ATTACH, vdev, rd, smmu_id, &res);
+	arm_smccc_1_1_smc(TMI_TMM_DEV_ATTACH, vdev, rd, smmu_id, smmu_vmid, &res);
 	return res.a1;
 }
 EXPORT_SYMBOL(tmi_dev_attach);

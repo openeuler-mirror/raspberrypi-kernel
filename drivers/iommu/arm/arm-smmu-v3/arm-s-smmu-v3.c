@@ -249,42 +249,6 @@ static int virtcca_smmu_write_reg_sync(struct arm_smmu_device *smmu, u32 val,
 }
 
 /**
- * virtcca_smmu_update_gbpa - Write values to glabal bypass register
- * @smmu: An SMMUv3 instance
- * @set: Number of bits to be set
- * @clr: Number of bits to be clear
- *
- * Returns:
- * %0 update gbpa register success
- */
-static int virtcca_smmu_update_gbpa(struct arm_smmu_device *smmu, u32 set, u32 clr)
-{
-	int ret;
-	u32 reg;
-
-	ret = virtcca_cvm_read_poll_timeout_atomic(tmi_smmu_read, reg, !(reg & S_GBPA_UPDATE),
-				       1, ARM_SMMU_POLL_TIMEOUT_US, false,
-				       smmu->ioaddr, ARM_SMMU_S_GBPA, ARM_S_SMMU_REG_32_BIT);
-	if (ret)
-		return ret;
-
-	reg &= ~clr;
-	reg |= set;
-
-	ret = tmi_smmu_write(smmu->ioaddr, ARM_SMMU_S_GBPA,
-		reg | S_GBPA_UPDATE, ARM_S_SMMU_REG_32_BIT);
-	if (ret)
-		return ret;
-
-	ret = virtcca_cvm_read_poll_timeout_atomic(tmi_smmu_read, reg, !(reg & S_GBPA_UPDATE),
-			1, ARM_SMMU_POLL_TIMEOUT_US, false,
-			smmu->ioaddr, ARM_SMMU_S_GBPA, ARM_S_SMMU_REG_32_BIT);
-	if (ret)
-		dev_err(smmu->dev, "S_SMMU: s_gbpa not responding to update\n");
-	return ret;
-}
-
-/**
  * virtcca_smmu_device_disable - Disable the secure smmu
  * @smmu: An SMMUv3 instance
  *
@@ -721,8 +685,9 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 
 	rv = rv & ARM_S_SMMU_MASK_UPPER_32_BIT;
 	if (rv & S_CR0_SMMUEN) {
-		dev_warn(smmu->dev, "S_SMMU: secure smmu currently enabled! resetting...\n");
-		virtcca_smmu_update_gbpa(smmu, S_GBPA_ABORT, 0);
+		dev_warn(smmu->dev, "S_SMMU: secure smmu does not support hot reset!\n");
+		smmu->s_smmu_id = ARM_S_SMMU_INVALID_ID;
+		return;
 	}
 
 	ret = virtcca_smmu_device_disable(smmu);
@@ -794,7 +759,7 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	enables |= CR0_EVTQEN;
 
 	/* Secure event queue */
-	memset(params_ptr, 0, sizeof(struct tmi_smmu_ste_params));
+	memset(params_ptr, 0, sizeof(struct tmi_smmu_cfg_params));
 	params_ptr->is_cmd_queue = 0;
 	params_ptr->ioaddr = smmu->ioaddr;
 	params_ptr->smmu_id = smmu->s_smmu_id;

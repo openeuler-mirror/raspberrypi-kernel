@@ -405,7 +405,7 @@ u64 tmi_mmio_unmap(u64 rd, u64 map_addr, u64 level);
 u64 tmi_mmio_write(u64 addr, u64 val, u64 bits, u64 dev_num);
 u64 tmi_mmio_read(u64 addr, u64 bits, u64 dev_num);
 u64 tmi_dev_delegate(u64 params);
-u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id);
+u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id, u64 smmu_vmid);
 u64 tmi_handle_s_evtq(u64 smmu_id);
 u64 tmi_smmu_device_reset(u64 params);
 u64 tmi_smmu_pcie_core_check(u64 smmu_base);
