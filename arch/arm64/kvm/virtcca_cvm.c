@@ -493,7 +493,7 @@ static int config_cvm_kae(struct kvm *kvm, struct kvm_cap_arm_tmm_config_item *c
 
 	params->kae_vf_num = cfg->kae_vf_num;
 	memcpy(params->sec_addr, cfg->sec_addr, cfg->kae_vf_num * sizeof(u64));
-	memcpy(params->hpre_addr, cfg->sec_addr, cfg->kae_vf_num * sizeof(u64));
+	memcpy(params->hpre_addr, cfg->hpre_addr, cfg->kae_vf_num * sizeof(u64));
 
 	return 0;
 }
