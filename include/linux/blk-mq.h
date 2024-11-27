@@ -195,7 +195,11 @@ struct request {
 #else
 	KABI_RESERVE(1)
 #endif
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	KABI_USE(2, struct pid *pid)
+#else
 	KABI_RESERVE(2)
+#endif
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)

@@ -238,6 +238,7 @@ static enum rq_end_io_ret flush_end_io(struct request *flush_rq,
 	 * avoiding use-after-free.
 	 */
 	WRITE_ONCE(flush_rq->state, MQ_RQ_IDLE);
+	blk_mq_put_alloc_task(flush_rq);
 	if (fq->rq_status != BLK_STS_OK) {
 		error = fq->rq_status;
 		fq->rq_status = BLK_STS_OK;
@@ -341,6 +342,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	flush_rq->rq_flags |= RQF_FLUSH_SEQ;
 	flush_rq->end_io = flush_end_io;
 	blk_rq_init_bi_alloc_time(flush_rq, first_rq);
+	blk_mq_get_alloc_task(flush_rq, first_rq->bio);
 	/*
 	 * Order WRITE ->end_io and WRITE rq->ref, and its pair is the one
 	 * implied in refcount_inc_not_zero() called from

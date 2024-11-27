@@ -388,6 +388,7 @@ static struct request *blk_mq_rq_ctx_init(struct blk_mq_alloc_data *data,
 	rq->end_io_data = NULL;
 
 	blk_rq_init_bi_alloc_time(rq, NULL);
+	blk_mq_get_alloc_task(rq, data->bio);
 
 	blk_crypto_rq_set_defaults(rq);
 	INIT_LIST_HEAD(&rq->queuelist);
@@ -710,6 +711,7 @@ static void __blk_mq_free_request(struct request *rq)
 	struct blk_mq_hw_ctx *hctx = rq->mq_hctx;
 	const int sched_tag = rq->internal_tag;
 
+	blk_mq_put_alloc_task(rq);
 	blk_crypto_free_request(rq);
 	blk_pm_mark_last_busy(rq);
 	rq->mq_hctx = NULL;
@@ -2921,6 +2923,7 @@ static struct request *blk_mq_get_new_requests(struct request_queue *q,
 		.q		= q,
 		.nr_tags	= 1,
 		.cmd_flags	= bio->bi_opf,
+		.bio		= bio,
 	};
 	struct request *rq;
 
