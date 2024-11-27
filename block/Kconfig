@@ -275,6 +275,7 @@ config BLK_IO_HUNG_TASK_CHECK
 	  if this is set, hungtask will complain about slow io even if such
 	  io is not hanged. Be careful to enable hungtask panic in this case.
 
+source "block/blk-io-hierarchy/Kconfig"
 source "block/partitions/Kconfig"
 
 config BLK_MQ_PCI

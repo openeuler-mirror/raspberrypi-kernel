@@ -575,7 +575,11 @@ struct request_queue {
 
 	bool			mq_sysfs_init_done;
 
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE(1, struct blk_io_hierarchy_stats *io_hierarchy_stats)
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)

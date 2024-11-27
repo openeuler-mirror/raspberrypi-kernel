@@ -332,8 +332,11 @@ struct bio {
 
 	struct bio_set		*bi_pool;
 
-
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE(1, u64 hierarchy_time)
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -496,6 +499,15 @@ enum stat_group {
 	STAT_FLUSH,
 
 	NR_STAT_GROUPS
+};
+
+enum stage_group {
+#ifdef CONFIG_BLK_DEV_THROTTLING
+	STAGE_THROTTLE,
+#endif
+	STAGE_RESERVE,
+	NR_BIO_STAGE_GROUPS,
+	NR_STAGE_GROUPS = NR_BIO_STAGE_GROUPS,
 };
 
 static inline enum req_op bio_op(const struct bio *bio)

@@ -12,6 +12,7 @@
 #include "blk-mq-debugfs.h"
 #include "blk-mq-sched.h"
 #include "blk-rq-qos.h"
+#include "blk-io-hierarchy/stats.h"
 
 static int queue_poll_stat_show(void *data, struct seq_file *m)
 {
@@ -642,8 +643,8 @@ static const struct blk_mq_debugfs_attr blk_mq_debugfs_ctx_attrs[] = {
 	{},
 };
 
-static void debugfs_create_files(struct dentry *parent, void *data,
-				 const struct blk_mq_debugfs_attr *attr)
+void debugfs_create_files(struct dentry *parent, void *data,
+			  const struct blk_mq_debugfs_attr *attr)
 {
 	if (IS_ERR_OR_NULL(parent))
 		return;
@@ -686,6 +687,8 @@ void blk_mq_debugfs_register(struct request_queue *q)
 			rqos = rqos->next;
 		}
 	}
+
+	blk_mq_debugfs_register_hierarchy_stats(q);
 }
 
 static void blk_mq_debugfs_register_ctx(struct blk_mq_hw_ctx *hctx,

@@ -35,6 +35,13 @@ void blk_mq_debugfs_unregister_sched_hctx(struct blk_mq_hw_ctx *hctx);
 
 void blk_mq_debugfs_register_rqos(struct rq_qos *rqos);
 void blk_mq_debugfs_unregister_rqos(struct rq_qos *rqos);
+void debugfs_create_files(struct dentry *parent, void *data,
+			  const struct blk_mq_debugfs_attr *attr);
+
+static inline bool blk_mq_debugfs_enabled(struct request_queue *q)
+{
+	return !IS_ERR_OR_NULL(q->debugfs_dir);
+}
 #else
 static inline void blk_mq_debugfs_register(struct request_queue *q)
 {

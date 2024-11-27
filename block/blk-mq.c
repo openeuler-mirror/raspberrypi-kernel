@@ -41,6 +41,7 @@
 #include "blk-stat.h"
 #include "blk-mq-sched.h"
 #include "blk-rq-qos.h"
+#include "blk-io-hierarchy/stats.h"
 
 static DEFINE_PER_CPU(struct llist_head, blk_cpu_done);
 static DEFINE_PER_CPU(call_single_data_t, blk_cpu_csd);
@@ -4117,6 +4118,8 @@ void blk_mq_release(struct request_queue *q)
 	struct blk_mq_hw_ctx *hctx, *next;
 	unsigned long i;
 
+	blk_io_hierarchy_stats_free(q);
+
 	queue_for_each_hw_ctx(q, hctx, i)
 		WARN_ON_ONCE(hctx && list_empty(&hctx->hctx_list));
 
@@ -4315,8 +4318,11 @@ int blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 	/* mark the queue as mq asap */
 	q->mq_ops = set->ops;
 
-	if (blk_mq_alloc_ctxs(q))
+	if (blk_io_hierarchy_stats_alloc(q))
 		goto err_exit;
+
+	if (blk_mq_alloc_ctxs(q))
+		goto err_hierarchy_stats;
 
 	/* init q->mq_kobj and sw queues' kobjects */
 	blk_mq_sysfs_init(q);
@@ -4352,6 +4358,8 @@ int blk_mq_init_allocated_queue(struct blk_mq_tag_set *set,
 
 err_hctxs:
 	blk_mq_release(q);
+err_hierarchy_stats:
+	blk_io_hierarchy_stats_free(q);
 err_exit:
 	q->mq_ops = NULL;
 	return -ENOMEM;
