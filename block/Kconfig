@@ -36,6 +36,9 @@ config BLOCK_LEGACY_AUTOLOAD
 	  created on demand, but scripts that manually create device nodes and
 	  then call losetup might rely on this behavior.
 
+config BLK_BIO_ALLOC_TIME
+	bool
+
 config BLK_RQ_ALLOC_TIME
 	bool
 

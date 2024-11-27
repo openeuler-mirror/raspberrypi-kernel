@@ -297,7 +297,11 @@ struct bio {
 #endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+	KABI_USE(4, u64 bi_alloc_time_ns)
+#else
 	KABI_RESERVE(4)
+#endif
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
