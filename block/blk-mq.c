@@ -388,6 +388,7 @@ static struct request *blk_mq_rq_ctx_init(struct blk_mq_alloc_data *data,
 	rq->end_io = NULL;
 	rq->end_io_data = NULL;
 
+	blk_rq_hierarchy_stats_init(rq);
 	blk_rq_init_bi_alloc_time(rq, NULL);
 	blk_mq_get_alloc_task(rq, data->bio);
 
@@ -712,6 +713,7 @@ static void __blk_mq_free_request(struct request *rq)
 	struct blk_mq_hw_ctx *hctx = rq->mq_hctx;
 	const int sched_tag = rq->internal_tag;
 
+	blk_rq_hierarchy_stats_complete(rq);
 	blk_mq_put_alloc_task(rq);
 	blk_crypto_free_request(rq);
 	blk_pm_mark_last_busy(rq);

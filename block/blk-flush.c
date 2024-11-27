@@ -73,6 +73,7 @@
 #include "blk.h"
 #include "blk-mq.h"
 #include "blk-mq-sched.h"
+#include "blk-io-hierarchy/stats.h"
 
 /* PREFLUSH/FUA sequences */
 enum {
@@ -343,6 +344,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	flush_rq->end_io = flush_end_io;
 	blk_rq_init_bi_alloc_time(flush_rq, first_rq);
 	blk_mq_get_alloc_task(flush_rq, first_rq->bio);
+	blk_rq_hierarchy_stats_init(flush_rq);
 	/*
 	 * Order WRITE ->end_io and WRITE rq->ref, and its pair is the one
 	 * implied in refcount_inc_not_zero() called from
@@ -372,6 +374,8 @@ static enum rq_end_io_ret mq_flush_data_end_io(struct request *rq,
 		WARN_ON(rq->tag < 0);
 		blk_mq_put_driver_tag(rq);
 	}
+
+	blk_rq_hierarchy_set_flush_done(rq);
 
 	/*
 	 * After populating an empty queue, kick it to avoid stall.  Read

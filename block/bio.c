@@ -297,6 +297,11 @@ void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 #ifdef CONFIG_BLK_BIO_ALLOC_TASK
 	bio->pid = get_pid(task_pid(current));
 #endif
+
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	bio->hierarchy_time = 0;
+	INIT_LIST_HEAD(&bio->hierarchy_list);
+#endif
 }
 EXPORT_SYMBOL(bio_init);
 

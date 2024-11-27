@@ -292,11 +292,13 @@ struct bio {
 
 #ifdef CONFIG_BLK_IO_HIERARCHY_STATS
 	KABI_USE(1, u64 hierarchy_time)
+	KABI_REPLACE(_KABI_RESERVE(2); _KABI_RESERVE(3),
+		     struct list_head hierarchy_list)
 #else
 	KABI_RESERVE(1)
-#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
 #ifdef CONFIG_BLK_BIO_ALLOC_TIME
 	KABI_USE(4, u64 bi_alloc_time_ns)
 #else
@@ -341,6 +343,13 @@ enum {
 	BIO_QOS_MERGED,		/* but went through rq_qos merge path */
 	BIO_REMAPPED,
 	BIO_ZONE_WRITE_LOCKED,	/* Owns a zoned device zone write lock */
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	BIO_HAS_DATA,		/* bio contain data. */
+	BIO_HIERARCHY_ACCT,	/*
+				 * This bio has already been subjected to
+				 * blk-io-hierarchy, don't do it again.
+				 */
+#endif
 	BIO_FLAG_LAST
 };
 
@@ -473,7 +482,10 @@ enum stage_group {
 #endif
 	STAGE_RESERVE,
 	NR_BIO_STAGE_GROUPS,
-	NR_STAGE_GROUPS = NR_BIO_STAGE_GROUPS,
+	STAGE_PLUG = NR_BIO_STAGE_GROUPS,
+	NR_RQ_STAGE_GROUPS,
+	STAGE_BIO = NR_RQ_STAGE_GROUPS,
+	NR_STAGE_GROUPS,
 };
 
 static inline enum req_op bio_op(const struct bio *bio)

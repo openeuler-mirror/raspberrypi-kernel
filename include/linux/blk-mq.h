@@ -201,8 +201,13 @@ struct request {
 	KABI_RESERVE(2)
 #endif
 	KABI_USE(3, u64 io_end_time_ns)
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE2(4, bool flush_done, enum stage_group stage)
+	KABI_USE(5, unsigned long hierarchy_time)
+#else
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
+#endif
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
 	KABI_RESERVE(8)
