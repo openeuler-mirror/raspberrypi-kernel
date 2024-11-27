@@ -306,7 +306,7 @@ static void __blkcg_iolatency_throttle(struct rq_qos *rqos,
 		return;
 	}
 
-	rq_qos_wait(rqw, iolat, iolat_acquire_inflight, iolat_cleanup_cb);
+	rq_qos_wait(rqw, iolat, iolat_acquire_inflight, iolat_cleanup_cb, NULL);
 }
 
 #define SCALE_DOWN_FACTOR 2

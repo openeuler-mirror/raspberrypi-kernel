@@ -91,10 +91,11 @@ void rq_qos_del(struct rq_qos *rqos);
 
 typedef bool (acquire_inflight_cb_t)(struct rq_wait *rqw, void *private_data);
 typedef void (cleanup_cb_t)(struct rq_wait *rqw, void *private_data);
+typedef void (io_acct_cb_t)(void *private_data, bool start_acct);
 
 void rq_qos_wait(struct rq_wait *rqw, void *private_data,
 		 acquire_inflight_cb_t *acquire_inflight_cb,
-		 cleanup_cb_t *cleanup_cb);
+		 cleanup_cb_t *cleanup_cb, io_acct_cb_t *io_acct_cb);
 bool rq_wait_inc_below(struct rq_wait *rq_wait, unsigned int limit);
 bool rq_depth_scale_up(struct rq_depth *rqd);
 bool rq_depth_scale_down(struct rq_depth *rqd, bool hard_throttle);

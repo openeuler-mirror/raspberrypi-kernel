@@ -230,6 +230,7 @@ static int rq_qos_wake_function(struct wait_queue_entry *curr,
  * @private_data: caller provided specific data
  * @acquire_inflight_cb: inc the rqw->inflight counter if we can
  * @cleanup_cb: the callback to cleanup in case we race with a waker
+ * @io_acct_cb: the callback for io accounting
  *
  * This provides a uniform place for the rq_qos users to do their throttling.
  * Since you can end up with a lot of things sleeping at once, this manages the
@@ -242,7 +243,7 @@ static int rq_qos_wake_function(struct wait_queue_entry *curr,
  */
 void rq_qos_wait(struct rq_wait *rqw, void *private_data,
 		 acquire_inflight_cb_t *acquire_inflight_cb,
-		 cleanup_cb_t *cleanup_cb)
+		 cleanup_cb_t *cleanup_cb, io_acct_cb_t *io_acct_cb)
 {
 	struct rq_qos_wait_data data = {
 		.wq = {
@@ -259,6 +260,9 @@ void rq_qos_wait(struct rq_wait *rqw, void *private_data,
 	has_sleeper = wq_has_sleeper(&rqw->wait);
 	if (!has_sleeper && acquire_inflight_cb(rqw, private_data))
 		return;
+
+	if (io_acct_cb)
+		io_acct_cb(private_data, true);
 
 	has_sleeper = !prepare_to_wait_exclusive(&rqw->wait, &data.wq,
 						 TASK_UNINTERRUPTIBLE);
@@ -284,6 +288,9 @@ void rq_qos_wait(struct rq_wait *rqw, void *private_data,
 		set_current_state(TASK_UNINTERRUPTIBLE);
 	} while (1);
 	finish_wait(&rqw->wait, &data.wq);
+
+	if (io_acct_cb)
+		io_acct_cb(private_data, false);
 }
 
 void rq_qos_exit(struct request_queue *q)
