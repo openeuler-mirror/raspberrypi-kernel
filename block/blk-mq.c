@@ -1308,6 +1308,8 @@ static void blk_add_rq_to_plug(struct blk_plug *plug, struct request *rq)
 {
 	struct request *last = rq_list_peek(&plug->mq_list);
 
+	rq_hierarchy_start_io_acct(rq, STAGE_PLUG);
+
 	if (!plug->rq_count) {
 		trace_block_plug(rq->q);
 	} else if (plug->rq_count >= blk_plug_max_rq_count(plug) ||
@@ -2840,6 +2842,8 @@ void blk_mq_flush_plug_list(struct blk_plug *plug, bool from_schedule)
 	 */
 	if (plug->rq_count == 0)
 		return;
+
+	plug_list_hierarchy_end_io_acct(plug);
 	plug->rq_count = 0;
 
 	if (!plug->multiple_queues && !plug->has_elevator && !from_schedule) {
@@ -4380,12 +4384,18 @@ err_exit:
 }
 EXPORT_SYMBOL(blk_mq_init_allocated_queue);
 
+static void blk_mq_unregister_default_hierarchy(struct request_queue *q)
+{
+	blk_mq_unregister_hierarchy(q, STAGE_GETTAG);
+	blk_mq_unregister_hierarchy(q, STAGE_PLUG);
+}
+
 /* tags can _not_ be used after returning from blk_mq_exit_queue */
 void blk_mq_exit_queue(struct request_queue *q)
 {
 	struct blk_mq_tag_set *set = q->tag_set;
 
-	blk_mq_unregister_hierarchy(q, STAGE_GETTAG);
+	blk_mq_unregister_default_hierarchy(q);
 	/* Checks hctx->flags & BLK_MQ_F_TAG_QUEUE_SHARED. */
 	blk_mq_exit_hw_queues(q, set, set->nr_hw_queues);
 	/* May clear BLK_MQ_F_TAG_QUEUE_SHARED in hctx->flags. */

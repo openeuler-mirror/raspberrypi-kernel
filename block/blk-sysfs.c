@@ -819,6 +819,12 @@ static void blk_debugfs_remove(struct gendisk *disk)
 	mutex_unlock(&q->debugfs_mutex);
 }
 
+static void blk_mq_register_default_hierarchy(struct request_queue *q)
+{
+	blk_mq_register_hierarchy(q, STAGE_GETTAG);
+	blk_mq_register_hierarchy(q, STAGE_PLUG);
+}
+
 /**
  * blk_register_queue - register a block layer queue with sysfs
  * @disk: Disk of which the request queue should be registered with sysfs.
@@ -862,7 +868,7 @@ int blk_register_queue(struct gendisk *disk)
 		goto out_elv_unregister;
 
 	if (queue_is_mq(q))
-		blk_mq_register_hierarchy(q, STAGE_GETTAG);
+		blk_mq_register_default_hierarchy(q);
 
 	blk_queue_flag_set(QUEUE_FLAG_REGISTERED, q);
 	wbt_enable_default(disk);

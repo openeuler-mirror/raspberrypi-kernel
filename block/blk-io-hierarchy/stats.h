@@ -186,6 +186,14 @@ static inline void rq_list_hierarchy_end_io_acct(struct list_head *head,
 		__rq_hierarchy_end_io_acct(rq, hstage);
 }
 
+static inline void plug_list_hierarchy_end_io_acct(struct blk_plug *plug)
+{
+	struct request *rq;
+
+	rq_list_for_each(&plug->mq_list, rq)
+		rq_hierarchy_end_io_acct(rq, STAGE_PLUG);
+}
+
 static inline void blk_rq_hierarchy_stats_init(struct request *rq)
 {
 	rq->stage = NR_RQ_STAGE_GROUPS;
@@ -336,6 +344,10 @@ rq_list_hierarchy_start_io_acct(struct list_head *head, enum stage_group stage)
 
 static inline void
 rq_list_hierarchy_end_io_acct(struct list_head *head, enum stage_group stage)
+{
+}
+
+static inline void plug_list_hierarchy_end_io_acct(struct blk_plug *plug)
 {
 }
 
