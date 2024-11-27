@@ -19,6 +19,7 @@
 #include "blk-wbt.h"
 #include "blk-cgroup.h"
 #include "blk-throttle.h"
+#include "blk-io-hierarchy/stats.h"
 
 struct queue_sysfs_entry {
 	struct attribute attr;
@@ -859,6 +860,9 @@ int blk_register_queue(struct gendisk *disk)
 	ret = blk_crypto_sysfs_register(disk);
 	if (ret)
 		goto out_elv_unregister;
+
+	if (queue_is_mq(q))
+		blk_mq_register_hierarchy(q, STAGE_GETTAG);
 
 	blk_queue_flag_set(QUEUE_FLAG_REGISTERED, q);
 	wbt_enable_default(disk);

@@ -59,4 +59,14 @@ config HIERARCHY_IOCOST
 
 	If unsure, say N.
 
+config HIERARCHY_GETTAG
+	bool "Enable hierarchy stats layer get-tag"
+	default n
+	help
+	Enabling this lets blk hierarchy stats to record additional information
+	for getting tag. Such information can be helpful to debug performance
+	and problems like io hang.
+
+	If unsure, say N.
+
 endif
