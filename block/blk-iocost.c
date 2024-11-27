@@ -184,6 +184,7 @@
 #include "blk-stat.h"
 #include "blk-wbt.h"
 #include "blk-cgroup.h"
+#include "blk-io-hierarchy/stats.h"
 
 #ifdef CONFIG_TRACEPOINTS
 
@@ -2722,12 +2723,14 @@ retry_lock:
 
 	iocg_unlock(iocg, ioc_locked, &flags);
 
+	bio_hierarchy_start_io_acct(bio, STAGE_IOCOST);
 	while (true) {
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		if (wait.committed)
 			break;
 		io_schedule();
 	}
+	bio_hierarchy_end_io_acct(bio, STAGE_IOCOST);
 
 	/* waker already committed us, proceed */
 	finish_wait(&iocg->waitq, &wait.wait);
@@ -2853,6 +2856,7 @@ static void ioc_rqos_exit(struct rq_qos *rqos)
 {
 	struct ioc *ioc = rqos_to_ioc(rqos);
 
+	blk_mq_unregister_hierarchy(rqos->disk->queue, STAGE_IOCOST);
 	blkcg_deactivate_policy(rqos->disk, &blkcg_policy_iocost);
 
 	spin_lock_irq(&ioc->lock);
@@ -2928,6 +2932,8 @@ static int blk_iocost_init(struct gendisk *disk)
 	ret = blkcg_activate_policy(disk, &blkcg_policy_iocost);
 	if (ret)
 		goto err_del_qos;
+
+	blk_mq_register_hierarchy(disk->queue, STAGE_IOCOST);
 	return 0;
 
 err_del_qos:

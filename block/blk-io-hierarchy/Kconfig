@@ -48,4 +48,15 @@ config HIERARCHY_WBT
 
 	If unsure, say N.
 
+config HIERARCHY_IOCOST
+	bool "Enable hierarchy stats layer iocost"
+	default n
+	depends on BLK_CGROUP_IOCOST
+	help
+	Enabling this lets blk hierarchy stats to record additional information
+	for blk-iocost. Such information can be helpful to debug performance
+	and problems like io hang.
+
+	If unsure, say N.
+
 endif
