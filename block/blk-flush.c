@@ -190,6 +190,7 @@ static void blk_flush_complete_seq(struct request *rq,
 
 	case REQ_FSEQ_DATA:
 		fq->flush_data_in_flight++;
+		rq_hierarchy_start_io_acct(rq, STAGE_REQUEUE);
 		spin_lock(&q->requeue_lock);
 		list_move(&rq->queuelist, &q->requeue_list);
 		spin_unlock(&q->requeue_lock);
@@ -356,6 +357,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	smp_wmb();
 	req_ref_set(flush_rq, 1);
 
+	rq_hierarchy_start_io_acct(flush_rq, STAGE_REQUEUE);
 	spin_lock(&q->requeue_lock);
 	list_add_tail(&flush_rq->queuelist, &q->flush_list);
 	spin_unlock(&q->requeue_lock);

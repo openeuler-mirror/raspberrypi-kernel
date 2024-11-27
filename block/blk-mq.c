@@ -1474,6 +1474,7 @@ void blk_mq_requeue_request(struct request *rq, bool kick_requeue_list)
 	/* this request will be re-inserted to io scheduler queue */
 	blk_mq_sched_requeue_request(rq);
 
+	rq_hierarchy_start_io_acct(rq, STAGE_REQUEUE);
 	spin_lock_irqsave(&q->requeue_lock, flags);
 	list_add_tail(&rq->queuelist, &q->requeue_list);
 	spin_unlock_irqrestore(&q->requeue_lock, flags);
@@ -1495,6 +1496,9 @@ static void blk_mq_requeue_work(struct work_struct *work)
 	list_splice_init(&q->requeue_list, &rq_list);
 	list_splice_init(&q->flush_list, &flush_list);
 	spin_unlock_irq(&q->requeue_lock);
+
+	rq_list_hierarchy_end_io_acct(&rq_list, STAGE_REQUEUE);
+	rq_list_hierarchy_end_io_acct(&flush_list, STAGE_REQUEUE);
 
 	while (!list_empty(&rq_list)) {
 		rq = list_entry(rq_list.next, struct request, queuelist);
@@ -4393,6 +4397,7 @@ static void blk_mq_unregister_default_hierarchy(struct request_queue *q)
 	blk_mq_unregister_hierarchy(q, STAGE_GETTAG);
 	blk_mq_unregister_hierarchy(q, STAGE_PLUG);
 	blk_mq_unregister_hierarchy(q, STAGE_HCTX);
+	blk_mq_unregister_hierarchy(q, STAGE_REQUEUE);
 }
 
 /* tags can _not_ be used after returning from blk_mq_exit_queue */
