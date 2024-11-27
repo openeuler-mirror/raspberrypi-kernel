@@ -39,6 +39,9 @@ config BLOCK_LEGACY_AUTOLOAD
 config BLK_BIO_ALLOC_TIME
 	bool
 
+config BLK_BIO_ALLOC_TASK
+	bool
+
 config BLK_RQ_ALLOC_TIME
 	bool
 
