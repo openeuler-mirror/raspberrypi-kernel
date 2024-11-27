@@ -1058,6 +1058,13 @@ inline void __blk_mq_end_request(struct request *rq, blk_status_t error)
 
 	blk_mq_finish_request(rq);
 
+	/*
+	 * Avoid accounting flush request with data twice and request that is
+	 * not started.
+	 */
+	if (blk_mq_request_started(rq) && !blk_rq_hierarchy_is_flush_done(rq))
+		rq_hierarchy_end_io_acct(rq, STAGE_RQ_DRIVER);
+
 	if (rq->end_io) {
 		rq_qos_done(rq->q, rq);
 		if (rq->end_io(rq, error) == RQ_END_IO_FREE)
@@ -1115,6 +1122,10 @@ void blk_mq_end_request_batch(struct io_comp_batch *iob)
 		blk_mq_finish_request(rq);
 
 		rq_qos_done(rq->q, rq);
+
+		/* Avoid accounting flush request with data twice. */
+		if (!blk_rq_hierarchy_is_flush_done(rq))
+			rq_hierarchy_end_io_acct(rq, STAGE_RQ_DRIVER);
 
 		/*
 		 * If end_io handler returns NONE, then it still has
@@ -1269,6 +1280,7 @@ void blk_mq_start_request(struct request *rq)
 	struct request_queue *q = rq->q;
 
 	trace_block_rq_issue(rq);
+	rq_hierarchy_start_io_acct(rq, STAGE_RQ_DRIVER);
 
 	if (test_bit(QUEUE_FLAG_STATS, &q->queue_flags) &&
 	    !blk_rq_is_passthrough(rq)) {
@@ -1461,6 +1473,7 @@ static void __blk_mq_requeue_request(struct request *rq)
 	if (blk_mq_request_started(rq)) {
 		WRITE_ONCE(rq->state, MQ_RQ_IDLE);
 		rq->rq_flags &= ~RQF_TIMED_OUT;
+		rq_hierarchy_end_io_acct(rq, STAGE_RQ_DRIVER);
 	}
 }
 
@@ -4398,6 +4411,7 @@ static void blk_mq_unregister_default_hierarchy(struct request_queue *q)
 	blk_mq_unregister_hierarchy(q, STAGE_PLUG);
 	blk_mq_unregister_hierarchy(q, STAGE_HCTX);
 	blk_mq_unregister_hierarchy(q, STAGE_REQUEUE);
+	blk_mq_unregister_hierarchy(q, STAGE_RQ_DRIVER);
 }
 
 /* tags can _not_ be used after returning from blk_mq_exit_queue */
