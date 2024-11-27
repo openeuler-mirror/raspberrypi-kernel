@@ -2147,6 +2147,7 @@ out:
 		if (nr_budgets)
 			blk_mq_release_budgets(q, list);
 
+		rq_list_hierarchy_start_io_acct(list, STAGE_HCTX);
 		spin_lock(&hctx->lock);
 		list_splice_tail_init(list, &hctx->dispatch);
 		spin_unlock(&hctx->lock);
@@ -2508,6 +2509,7 @@ static void blk_mq_request_bypass_insert(struct request *rq, blk_insert_t flags)
 {
 	struct blk_mq_hw_ctx *hctx = rq->mq_hctx;
 
+	rq_hierarchy_start_io_acct(rq, STAGE_HCTX);
 	spin_lock(&hctx->lock);
 	if (flags & BLK_MQ_INSERT_AT_HEAD)
 		list_add(&rq->queuelist, &hctx->dispatch);
@@ -2815,6 +2817,7 @@ static void blk_mq_dispatch_plug_list(struct blk_plug *plug, bool from_sched)
 	percpu_ref_get(&this_hctx->queue->q_usage_counter);
 	/* passthrough requests should never be issued to the I/O scheduler */
 	if (is_passthrough) {
+		rq_list_hierarchy_start_io_acct(&list, STAGE_HCTX);
 		spin_lock(&this_hctx->lock);
 		list_splice_tail_init(&list, &this_hctx->dispatch);
 		spin_unlock(&this_hctx->lock);
@@ -3618,6 +3621,7 @@ static int blk_mq_hctx_notify_dead(unsigned int cpu, struct hlist_node *node)
 	if (list_empty(&tmp))
 		return 0;
 
+	rq_list_hierarchy_start_io_acct(&tmp, STAGE_HCTX);
 	spin_lock(&hctx->lock);
 	list_splice_tail_init(&tmp, &hctx->dispatch);
 	spin_unlock(&hctx->lock);
@@ -4388,6 +4392,7 @@ static void blk_mq_unregister_default_hierarchy(struct request_queue *q)
 {
 	blk_mq_unregister_hierarchy(q, STAGE_GETTAG);
 	blk_mq_unregister_hierarchy(q, STAGE_PLUG);
+	blk_mq_unregister_hierarchy(q, STAGE_HCTX);
 }
 
 /* tags can _not_ be used after returning from blk_mq_exit_queue */
