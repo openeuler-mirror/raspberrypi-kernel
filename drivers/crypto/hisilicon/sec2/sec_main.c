@@ -16,6 +16,7 @@
 
 #include "sec.h"
 
+#define CAP_FILE_PERMISSION		0444
 #define SEC_VF_NUM			63
 #define SEC_QUEUE_NUM_V1		4096
 #define PCI_DEVICE_ID_HUAWEI_SEC_PF	0xa255
@@ -98,8 +99,8 @@
 #define SEC_DBGFS_VAL_MAX_LEN		20
 #define SEC_SINGLE_PORT_MAX_TRANS	0x2060
 
-#define SEC_SQE_MASK_OFFSET		64
-#define SEC_SQE_MASK_LEN		48
+#define SEC_SQE_MASK_OFFSET		16
+#define SEC_SQE_MASK_LEN		108
 #define SEC_SHAPER_TYPE_RATE		400
 
 #define SEC_DFX_BASE		0x301000
@@ -151,7 +152,7 @@ static const struct hisi_qm_cap_info sec_basic_info[] = {
 	{SEC_CORE_TYPE_NUM_CAP, 0x313c, 16, GENMASK(3, 0), 0x1, 0x1, 0x1},
 	{SEC_CORE_NUM_CAP, 0x313c, 8, GENMASK(7, 0), 0x4, 0x4, 0x4},
 	{SEC_CORES_PER_CLUSTER_NUM_CAP, 0x313c, 0, GENMASK(7, 0), 0x4, 0x4, 0x4},
-	{SEC_CORE_ENABLE_BITMAP, 0x3140, 32, GENMASK(31, 0), 0x17F, 0x17F, 0xF},
+	{SEC_CORE_ENABLE_BITMAP, 0x3140, 0, GENMASK(31, 0), 0x17F, 0x17F, 0xF},
 	{SEC_DRV_ALG_BITMAP_LOW, 0x3144, 0, GENMASK(31, 0), 0x18050CB, 0x18050CB, 0x18670CF},
 	{SEC_DRV_ALG_BITMAP_HIGH, 0x3148, 0, GENMASK(31, 0), 0x395C, 0x395C, 0x395C},
 	{SEC_DEV_ALG_BITMAP_LOW, 0x314c, 0, GENMASK(31, 0), 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
@@ -166,11 +167,34 @@ static const struct hisi_qm_cap_info sec_basic_info[] = {
 	{SEC_CORE4_ALG_BITMAP_HIGH, 0x3170, 0, GENMASK(31, 0), 0x3FFF, 0x3FFF, 0x3FFF},
 };
 
-static const u32 sec_pre_store_caps[] = {
-	SEC_DRV_ALG_BITMAP_LOW,
-	SEC_DRV_ALG_BITMAP_HIGH,
-	SEC_DEV_ALG_BITMAP_LOW,
-	SEC_DEV_ALG_BITMAP_HIGH,
+static const struct hisi_qm_cap_query_info sec_cap_query_info[] = {
+	{QM_RAS_NFE_TYPE, "QM_RAS_NFE_TYPE             ", 0x3124, 0x0, 0x1C77, 0x7C77},
+	{QM_RAS_NFE_RESET, "QM_RAS_NFE_RESET            ", 0x3128, 0x0, 0xC77, 0x6C77},
+	{QM_RAS_CE_TYPE, "QM_RAS_CE_TYPE              ", 0x312C, 0x0, 0x8, 0x8},
+	{SEC_RAS_NFE_TYPE, "SEC_RAS_NFE_TYPE            ", 0x3130, 0x0, 0x177, 0x60177},
+	{SEC_RAS_NFE_RESET, "SEC_RAS_NFE_RESET           ", 0x3134, 0x0, 0x177, 0x177},
+	{SEC_RAS_CE_TYPE, "SEC_RAS_CE_TYPE             ", 0x3138, 0x0, 0x88, 0xC088},
+	{SEC_CORE_INFO, "SEC_CORE_INFO               ", 0x313c, 0x110404, 0x110404, 0x110404},
+	{SEC_CORE_EN, "SEC_CORE_EN                 ", 0x3140, 0x17F, 0x17F, 0xF},
+	{SEC_DRV_ALG_BITMAP_LOW_TB, "SEC_DRV_ALG_BITMAP_LOW      ",
+					0x3144, 0x18050CB, 0x18050CB, 0x18670CF},
+	{SEC_DRV_ALG_BITMAP_HIGH_TB, "SEC_DRV_ALG_BITMAP_HIGH     ",
+					0x3148, 0x395C, 0x395C, 0x395C},
+	{SEC_ALG_BITMAP_LOW, "SEC_ALG_BITMAP_LOW          ",
+					0x314c, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
+	{SEC_ALG_BITMAP_HIGH, "SEC_ALG_BITMAP_HIGH         ", 0x3150, 0x3FFF, 0x3FFF, 0x3FFF},
+	{SEC_CORE1_BITMAP_LOW, "SEC_CORE1_BITMAP_LOW        ",
+					0x3154, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
+	{SEC_CORE1_BITMAP_HIGH, "SEC_CORE1_BITMAP_HIGH       ", 0x3158, 0x3FFF, 0x3FFF, 0x3FFF},
+	{SEC_CORE2_BITMAP_LOW, "SEC_CORE2_BITMAP_LOW        ",
+					0x315c, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
+	{SEC_CORE2_BITMAP_HIGH, "SEC_CORE2_BITMAP_HIGH       ", 0x3160, 0x3FFF, 0x3FFF, 0x3FFF},
+	{SEC_CORE3_BITMAP_LOW, "SEC_CORE3_BITMAP_LOW        ",
+					0x3164, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
+	{SEC_CORE3_BITMAP_HIGH, "SEC_CORE3_BITMAP_HIGH       ", 0x3168, 0x3FFF, 0x3FFF, 0x3FFF},
+	{SEC_CORE4_BITMAP_LOW, "SEC_CORE4_BITMAP_LOW        ",
+					0x316c, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF},
+	{SEC_CORE4_BITMAP_HIGH, "SEC_CORE4_BITMAP_HIGH       ", 0x3170, 0x3FFF, 0x3FFF, 0x3FFF},
 };
 
 static const struct qm_dev_alg sec_dev_algs[] = { {
@@ -321,7 +345,7 @@ static int sec_pf_q_num_set(const char *val, const struct kernel_param *kp)
 {
 	pf_q_num_flag = true;
 
-	return q_num_set(val, kp, PCI_DEVICE_ID_HUAWEI_SEC_PF);
+	return hisi_qm_q_num_set(val, kp, PCI_DEVICE_ID_HUAWEI_SEC_PF);
 }
 
 static const struct kernel_param_ops sec_pf_q_num_ops = {
@@ -837,6 +861,26 @@ static int sec_regs_show(struct seq_file *s, void *unused)
 
 DEFINE_SHOW_ATTRIBUTE(sec_regs);
 
+static int sec_cap_regs_show(struct seq_file *s, void *unused)
+{
+	struct hisi_qm *qm = s->private;
+	u32 i, size;
+
+	size = qm->cap_tables.qm_cap_size;
+	for (i = 0; i < size; i++)
+		seq_printf(s, "%s= 0x%08x\n", qm->cap_tables.qm_cap_table[i].name,
+			   qm->cap_tables.qm_cap_table[i].cap_val);
+
+	size = qm->cap_tables.dev_cap_size;
+	for (i = 0; i < size; i++)
+		seq_printf(s, "%s= 0x%08x\n", qm->cap_tables.dev_cap_table[i].name,
+			   qm->cap_tables.dev_cap_table[i].cap_val);
+
+	return 0;
+}
+
+DEFINE_SHOW_ATTRIBUTE(sec_cap_regs);
+
 static int sec_core_debug_init(struct hisi_qm *qm)
 {
 	struct dfx_diff_registers *sec_regs = qm->debug.acc_diff_regs;
@@ -870,6 +914,9 @@ static int sec_core_debug_init(struct hisi_qm *qm)
 		debugfs_create_file(sec_dfx_labels[i].name, 0644,
 				   tmp_d, data, &sec_atomic64_ops);
 	}
+
+	debugfs_create_file("cap_regs", CAP_FILE_PERMISSION,
+			    qm->debug.debug_root, qm, &sec_cap_regs_fops);
 
 	return 0;
 }
@@ -953,7 +1000,7 @@ static void sec_show_last_regs_uninit(struct hisi_qm *qm)
 {
 	struct qm_debug *debug = &qm->debug;
 
-	if (!debug->last_words)
+	if (qm->fun_type == QM_HW_VF || !debug->last_words)
 		return;
 
 	kfree(debug->last_words);
@@ -1020,16 +1067,6 @@ static void sec_disable_error_report(struct hisi_qm *qm, u32 err_type)
 	writel(nfe_mask & (~err_type), qm->io_base + SEC_RAS_NFE_REG);
 }
 
-static void sec_enable_error_report(struct hisi_qm *qm)
-{
-	u32 nfe_mask, ce_mask;
-
-	nfe_mask = hisi_qm_get_hw_info(qm, sec_basic_info, SEC_NFE_MASK_CAP, qm->cap_ver);
-	ce_mask = hisi_qm_get_hw_info(qm, sec_basic_info, SEC_CE_MASK_CAP, qm->cap_ver);
-	writel(nfe_mask, qm->io_base + SEC_RAS_NFE_REG);
-	writel(ce_mask, qm->io_base + SEC_RAS_CE_REG);
-}
-
 static void sec_open_axi_master_ooo(struct hisi_qm *qm)
 {
 	u32 val;
@@ -1037,6 +1074,27 @@ static void sec_open_axi_master_ooo(struct hisi_qm *qm)
 	val = readl(qm->io_base + SEC_CONTROL_REG);
 	writel(val & SEC_AXI_SHUTDOWN_DISABLE, qm->io_base + SEC_CONTROL_REG);
 	writel(val | SEC_AXI_SHUTDOWN_ENABLE, qm->io_base + SEC_CONTROL_REG);
+}
+
+static enum acc_err_result sec_get_err_result(struct hisi_qm *qm)
+{
+	u32 err_status;
+
+	err_status = sec_get_hw_err_status(qm);
+	if (err_status) {
+		if (err_status & qm->err_info.ecc_2bits_mask)
+			qm->err_status.is_dev_ecc_mbit = true;
+		sec_log_hw_error(qm, err_status);
+
+		if (err_status & qm->err_info.dev_reset_mask) {
+			/* Disable the same error reporting until device is recovered. */
+			sec_disable_error_report(qm, err_status);
+			return ACC_ERR_NEED_RESET;
+		}
+		sec_clear_hw_err_status(qm, err_status);
+	}
+
+	return ACC_ERR_RECOVERED;
 }
 
 static void sec_err_info_init(struct hisi_qm *qm)
@@ -1065,14 +1123,12 @@ static const struct hisi_qm_err_ini sec_err_ini = {
 	.hw_err_disable		= sec_hw_error_disable,
 	.get_dev_hw_err_status	= sec_get_hw_err_status,
 	.clear_dev_hw_err_status = sec_clear_hw_err_status,
-	.disable_error_report   = sec_disable_error_report,
-	.enable_error_report    = sec_enable_error_report,
-	.log_dev_hw_err		= sec_log_hw_error,
 	.open_axi_master_ooo	= sec_open_axi_master_ooo,
 	.open_sva_prefetch	= sec_open_sva_prefetch,
 	.close_sva_prefetch	= sec_close_sva_prefetch,
 	.show_last_dfx_regs	= sec_show_last_dfx_regs,
 	.err_info_init		= sec_err_info_init,
+	.get_err_result		= sec_get_err_result,
 };
 
 static int sec_pf_probe_init(struct sec_dev *sec)
@@ -1085,6 +1141,7 @@ static int sec_pf_probe_init(struct sec_dev *sec)
 		return ret;
 
 	sec_open_sva_prefetch(qm);
+	hisi_qm_dev_err_init(qm);
 	sec_debug_regs_clear(qm);
 	ret = sec_show_last_regs_init(qm);
 	if (ret)
@@ -1099,18 +1156,20 @@ static int sec_pre_store_cap_reg(struct hisi_qm *qm)
 	struct pci_dev *pdev = qm->pdev;
 	size_t i, size;
 
-	size = ARRAY_SIZE(sec_pre_store_caps);
+	size = ARRAY_SIZE(sec_cap_query_info);
 	sec_cap = devm_kzalloc(&pdev->dev, sizeof(*sec_cap) * size, GFP_KERNEL);
 	if (!sec_cap)
 		return -ENOMEM;
 
 	for (i = 0; i < size; i++) {
-		sec_cap[i].type = sec_pre_store_caps[i];
-		sec_cap[i].cap_val = hisi_qm_get_hw_info(qm, sec_basic_info,
-				     sec_pre_store_caps[i], qm->cap_ver);
+		sec_cap[i].type = sec_cap_query_info[i].type;
+		sec_cap[i].name = sec_cap_query_info[i].name;
+		sec_cap[i].cap_val = hisi_qm_get_cap_value(qm, sec_cap_query_info,
+				     i, qm->cap_ver);
 	}
 
 	qm->cap_tables.dev_cap_table = sec_cap;
+	qm->cap_tables.dev_cap_size = size;
 
 	return 0;
 }
@@ -1160,8 +1219,7 @@ static int sec_qm_init(struct hisi_qm *qm, struct pci_dev *pdev)
 		hisi_qm_uninit(qm);
 		return ret;
 	}
-
-	alg_msk = sec_get_alg_bitmap(qm, SEC_DEV_ALG_BITMAP_HIGH_IDX, SEC_DEV_ALG_BITMAP_LOW_IDX);
+	alg_msk = sec_get_alg_bitmap(qm, SEC_ALG_BITMAP_HIGH, SEC_ALG_BITMAP_LOW);
 	ret = hisi_qm_set_algs(qm, alg_msk, sec_dev_algs, ARRAY_SIZE(sec_dev_algs));
 	if (ret) {
 		pci_err(qm->pdev, "Failed to set sec algs!\n");
@@ -1204,6 +1262,7 @@ static void sec_probe_uninit(struct hisi_qm *qm)
 	sec_debug_regs_clear(qm);
 	sec_show_last_regs_uninit(qm);
 	sec_close_sva_prefetch(qm);
+	hisi_qm_dev_err_uninit(qm);
 }
 
 static int sec_probe(struct pci_dev *pdev, const struct pci_device_id *id)
