@@ -29,7 +29,10 @@
 #include "blk-wbt.h"
 #include "blk-rq-qos.h"
 #include "elevator.h"
+
+#ifndef __GENKSYMS__
 #include "blk.h"
+#endif
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/wbt.h>

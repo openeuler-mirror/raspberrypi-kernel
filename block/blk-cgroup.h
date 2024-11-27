@@ -19,7 +19,10 @@
 #include <linux/kthread.h>
 #include <linux/blk-mq.h>
 #include <linux/llist.h>
+
+#ifndef __GENKSYMS__
 #include "blk.h"
+#endif
 
 struct blkcg_gq;
 struct blkg_policy_data;

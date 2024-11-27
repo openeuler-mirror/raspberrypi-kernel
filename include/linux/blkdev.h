@@ -1032,7 +1032,6 @@ struct blk_plug {
 
 	/* if ios_left is > 1, we can batch tag/rq allocations */
 	struct request *cached_rq;
-	u64 cur_ktime;
 	unsigned short nr_ios;
 
 	unsigned short rq_count;
@@ -1042,7 +1041,7 @@ struct blk_plug {
 
 	struct list_head cb_list; /* md requires an unplug callback */
 
-	KABI_RESERVE(1)
+	KABI_USE(1, u64 cur_ktime)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 };
