@@ -866,6 +866,7 @@ static struct request *attempt_merge(struct request_queue *q,
 	req->biotail = next->biotail;
 
 	req->__data_len += blk_rq_bytes(next);
+	blk_rq_update_bi_alloc_time(req, NULL, next);
 
 	if (!blk_discard_mergable(req))
 		elv_merge_requests(q, req, next);
@@ -996,6 +997,7 @@ static enum bio_merge_status bio_attempt_back_merge(struct request *req,
 	req->biotail->bi_next = bio;
 	req->biotail = bio;
 	req->__data_len += bio->bi_iter.bi_size;
+	blk_rq_update_bi_alloc_time(req, bio, NULL);
 
 	bio_crypt_free_ctx(bio);
 
@@ -1024,6 +1026,7 @@ static enum bio_merge_status bio_attempt_front_merge(struct request *req,
 
 	req->__sector = bio->bi_iter.bi_sector;
 	req->__data_len += bio->bi_iter.bi_size;
+	blk_rq_update_bi_alloc_time(req, bio, NULL);
 
 	bio_crypt_do_front_merge(req, bio);
 
@@ -1048,6 +1051,7 @@ static enum bio_merge_status bio_attempt_discard_merge(struct request_queue *q,
 	req->biotail = bio;
 	req->__data_len += bio->bi_iter.bi_size;
 	req->nr_phys_segments = segments + 1;
+	blk_rq_update_bi_alloc_time(req, bio, NULL);
 
 	blk_account_io_merge_bio(req);
 	return BIO_MERGE_OK;

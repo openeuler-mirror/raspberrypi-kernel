@@ -552,6 +552,7 @@ int blk_rq_append_bio(struct request *rq, struct bio *bio)
 		rq->biotail = bio;
 		rq->__data_len += (bio)->bi_iter.bi_size;
 		bio_crypt_free_ctx(bio);
+		blk_rq_update_bi_alloc_time(rq, bio, NULL);
 	}
 
 	return 0;

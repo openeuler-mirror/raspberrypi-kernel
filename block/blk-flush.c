@@ -340,6 +340,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	flush_rq->cmd_flags |= (flags & REQ_DRV) | (flags & REQ_FAILFAST_MASK);
 	flush_rq->rq_flags |= RQF_FLUSH_SEQ;
 	flush_rq->end_io = flush_end_io;
+	blk_rq_init_bi_alloc_time(flush_rq, first_rq);
 	/*
 	 * Order WRITE ->end_io and WRITE rq->ref, and its pair is the one
 	 * implied in refcount_inc_not_zero() called from

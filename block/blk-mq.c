@@ -387,6 +387,8 @@ static struct request *blk_mq_rq_ctx_init(struct blk_mq_alloc_data *data,
 	rq->end_io = NULL;
 	rq->end_io_data = NULL;
 
+	blk_rq_init_bi_alloc_time(rq, NULL);
+
 	blk_crypto_rq_set_defaults(rq);
 	INIT_LIST_HEAD(&rq->queuelist);
 	/* tag was already set */
@@ -4947,6 +4949,38 @@ void blk_mq_cancel_work_sync(struct request_queue *q)
 	queue_for_each_hw_ctx(q, hctx, i)
 		cancel_delayed_work_sync(&hctx->run_work);
 }
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+void blk_rq_init_bi_alloc_time(struct request *rq, struct request *first_rq)
+{
+	rq->bi_alloc_time_ns = first_rq ? first_rq->bi_alloc_time_ns :
+					   blk_time_get_ns();
+}
+
+/*
+ * Used in following cases to updated request bi_alloc_time_ns:
+ *
+ * 1) Allocate a new @rq for @bio;
+ * 2) @bio is merged to @rq, in this case @merged_rq should be NULL;
+ * 3) @merged_rq is merged to @rq, in this case @bio should be NULL;
+ */
+void blk_rq_update_bi_alloc_time(struct request *rq, struct bio *bio,
+				 struct request *merged_rq)
+{
+	if (bio) {
+		if (rq->bi_alloc_time_ns > bio->bi_alloc_time_ns)
+			rq->bi_alloc_time_ns = bio->bi_alloc_time_ns;
+		return;
+	}
+
+	if (!merged_rq)
+		return;
+
+	if (rq->bi_alloc_time_ns > merged_rq->bi_alloc_time_ns)
+		rq->bi_alloc_time_ns = merged_rq->bi_alloc_time_ns;
+}
+EXPORT_SYMBOL_GPL(blk_rq_update_bi_alloc_time);
+#endif
 
 static int __init blk_mq_init(void)
 {
