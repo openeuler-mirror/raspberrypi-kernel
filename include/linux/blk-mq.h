@@ -200,7 +200,7 @@ struct request {
 #else
 	KABI_RESERVE(2)
 #endif
-	KABI_RESERVE(3)
+	KABI_USE(3, u64 io_end_time_ns)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
 	KABI_RESERVE(6)

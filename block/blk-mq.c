@@ -379,6 +379,7 @@ static struct request *blk_mq_rq_ctx_init(struct blk_mq_alloc_data *data,
 
 	rq->part = NULL;
 	rq->io_start_time_ns = 0;
+	rq->io_end_time_ns = 0;
 	rq->stats_sectors = 0;
 	rq->nr_phys_segments = 0;
 #if defined(CONFIG_BLK_DEV_INTEGRITY)
@@ -1045,8 +1046,13 @@ static inline void __blk_mq_end_request_acct(struct request *rq, u64 now)
 
 inline void __blk_mq_end_request(struct request *rq, blk_status_t error)
 {
-	if (blk_mq_need_time_stamp(rq))
-		__blk_mq_end_request_acct(rq, blk_time_get_ns());
+	if (blk_mq_need_time_stamp(rq)) {
+		u64 now = rq->io_end_time_ns;
+
+		if (!now)
+			now = blk_time_get_ns();
+		__blk_mq_end_request_acct(rq, now);
+	}
 
 	blk_mq_finish_request(rq);
 
