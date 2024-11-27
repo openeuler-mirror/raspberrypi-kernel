@@ -1679,6 +1679,7 @@ static void hisi_acc_vfio_pci_close_device(struct vfio_device *core_vdev)
 	if (core_vdev->mig_ops)
 		vf_debugfs_exit(hisi_acc_vdev);
 
+	hisi_acc_vf_disable_fds(hisi_acc_vdev);
 	iounmap(vf_qm->io_base);
 	vfio_pci_core_close_device(core_vdev);
 }
@@ -1699,6 +1700,7 @@ static int hisi_acc_vfio_pci_migrn_init_dev(struct vfio_device *core_vdev)
 	hisi_acc_vdev->vf_id = pci_iov_vf_id(pdev) + 1;
 	hisi_acc_vdev->pf_qm = pf_qm;
 	hisi_acc_vdev->vf_dev = pdev;
+	hisi_acc_vdev->vf_qm_state = QM_NOT_READY;
 	mutex_init(&hisi_acc_vdev->state_mutex);
 
 	core_vdev->migration_flags = VFIO_MIGRATION_STOP_COPY | VFIO_MIGRATION_PRE_COPY;
