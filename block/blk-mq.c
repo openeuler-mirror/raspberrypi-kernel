@@ -790,8 +790,10 @@ static void req_bio_endio(struct request *rq, struct bio *bio,
 	if (unlikely(rq->rq_flags & RQF_QUIET))
 		bio_set_flag(bio, BIO_QUIET);
 	/* don't actually finish bio if it's part of flush sequence */
-	if (bio->bi_iter.bi_size == 0 && !(rq->rq_flags & RQF_FLUSH_SEQ))
+	if (bio->bi_iter.bi_size == 0 && !(rq->rq_flags & RQF_FLUSH_SEQ)) {
+		req_bio_hierarchy_end(rq, bio);
 		bio_endio(bio);
+	}
 }
 
 static void blk_account_io_completion(struct request *req, unsigned int bytes)
@@ -856,8 +858,10 @@ static void blk_complete_request(struct request *req)
 		if (req_op(req) == REQ_OP_ZONE_APPEND)
 			bio->bi_iter.bi_sector = req->__sector;
 
-		if (!is_flush)
+		if (!is_flush) {
+			req_bio_hierarchy_end(req, bio);
 			bio_endio(bio);
+		}
 		bio = next;
 	} while (bio);
 
@@ -1115,6 +1119,7 @@ void blk_mq_end_request_batch(struct io_comp_batch *iob)
 		prefetch(rq->bio);
 		prefetch(rq->rq_next);
 
+		rq->io_end_time_ns = now;
 		blk_complete_request(rq);
 		if (iob->need_ts)
 			__blk_mq_end_request_acct(rq, now);
@@ -3043,6 +3048,8 @@ void blk_mq_submit_bio(struct bio *bio)
 			bio = __bio_split_to_limits(bio, &q->limits, &nr_segs);
 			if (!bio)
 				return;
+			/* account for split bio. */
+			bio_hierarchy_start(bio);
 		}
 		if (!bio_integrity_prep(bio))
 			return;
@@ -3058,6 +3065,8 @@ void blk_mq_submit_bio(struct bio *bio)
 			bio = __bio_split_to_limits(bio, &q->limits, &nr_segs);
 			if (!bio)
 				goto fail;
+			/* account for split bio. */
+			bio_hierarchy_start(bio);
 		}
 		if (!bio_integrity_prep(bio))
 			goto fail;
@@ -4412,6 +4421,7 @@ static void blk_mq_unregister_default_hierarchy(struct request_queue *q)
 	blk_mq_unregister_hierarchy(q, STAGE_HCTX);
 	blk_mq_unregister_hierarchy(q, STAGE_REQUEUE);
 	blk_mq_unregister_hierarchy(q, STAGE_RQ_DRIVER);
+	blk_mq_unregister_hierarchy(q, STAGE_BIO);
 }
 
 /* tags can _not_ be used after returning from blk_mq_exit_queue */

@@ -24,6 +24,7 @@
 #include "blk.h"
 #include "blk-rq-qos.h"
 #include "blk-cgroup.h"
+#include "blk-io-hierarchy/stats.h"
 
 #define ALLOC_CACHE_THRESHOLD	16
 #define ALLOC_CACHE_MAX		256
@@ -230,6 +231,7 @@ void bio_uninit(struct bio *bio)
 		bio->pid = NULL;
 	}
 #endif
+	bio_hierarchy_end(bio);
 }
 EXPORT_SYMBOL(bio_uninit);
 
