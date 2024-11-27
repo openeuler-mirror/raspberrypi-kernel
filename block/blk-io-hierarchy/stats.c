@@ -186,7 +186,7 @@ void bio_hierarchy_start_io_acct(struct bio *bio, enum stage_group stage)
 
 	hstage = q->io_hierarchy_stats->hstage[stage];
 	io_hierarchy_inc(hstage->hstats, dispatched, hierarchy_op(bio));
-	bio->hierarchy_time = ktime_get_ns();
+	bio->hierarchy_time = blk_time_get_ns();
 }
 
 void bio_hierarchy_end_io_acct(struct bio *bio, enum stage_group stage,
@@ -208,7 +208,7 @@ void bio_hierarchy_end_io_acct(struct bio *bio, enum stage_group stage,
 void bio_list_hierarchy_end_io_acct(struct bio_list *list,
 				    enum stage_group stage)
 {
-	u64 time = ktime_get_ns();
+	u64 time = blk_time_get_ns();
 	struct bio *bio;
 
 	bio_list_for_each(bio, list)
