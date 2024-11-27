@@ -23,6 +23,7 @@
 #include "blk-mq.h"
 #include "blk-mq-debugfs.h"
 #include "blk-mq-sched.h"
+#include "blk-io-hierarchy/stats.h"
 
 /*
  * See Documentation/block/deadline-iosched.rst
@@ -103,6 +104,8 @@ struct deadline_data {
 
 	spinlock_t lock;
 	spinlock_t zone_lock;
+
+	struct request_queue *q;
 };
 
 /* Maps an I/O priority class to a deadline scheduler priority. */
@@ -618,6 +621,8 @@ static struct request *dd_dispatch_request(struct blk_mq_hw_ctx *hctx)
 unlock:
 	spin_unlock(&dd->lock);
 
+	if (rq)
+		rq_hierarchy_end_io_acct(rq, STAGE_DEADLINE);
 	return rq;
 }
 
@@ -696,6 +701,7 @@ static void dd_exit_sched(struct elevator_queue *e)
 			  stats->dispatched, atomic_read(&stats->completed));
 	}
 
+	blk_mq_unregister_hierarchy(dd->q, STAGE_DEADLINE);
 	kfree(dd);
 }
 
@@ -735,6 +741,7 @@ static int dd_init_sched(struct request_queue *q, struct elevator_type *e)
 	dd->last_dir = DD_WRITE;
 	dd->fifo_batch = fifo_batch;
 	dd->prio_aging_expire = prio_aging_expire;
+	dd->q = q;
 	spin_lock_init(&dd->lock);
 	spin_lock_init(&dd->zone_lock);
 
@@ -742,6 +749,7 @@ static int dd_init_sched(struct request_queue *q, struct elevator_type *e)
 	blk_queue_flag_set(QUEUE_FLAG_SQ_SCHED, q);
 
 	q->elevator = eq;
+	blk_mq_register_hierarchy(q, STAGE_DEADLINE);
 	return 0;
 
 put_eq:
@@ -796,8 +804,10 @@ static bool dd_bio_merge(struct request_queue *q, struct bio *bio,
 	ret = blk_mq_sched_try_merge(q, bio, nr_segs, &free);
 	spin_unlock(&dd->lock);
 
-	if (free)
+	if (free) {
+		rq_hierarchy_end_io_acct(free, STAGE_DEADLINE);
 		blk_mq_free_request(free);
+	}
 
 	return ret;
 }
@@ -882,6 +892,8 @@ static void dd_insert_requests(struct blk_mq_hw_ctx *hctx,
 	struct deadline_data *dd = q->elevator->elevator_data;
 	LIST_HEAD(free);
 
+	rq_list_hierarchy_start_io_acct(list, STAGE_DEADLINE);
+
 	spin_lock(&dd->lock);
 	while (!list_empty(list)) {
 		struct request *rq;
@@ -892,6 +904,7 @@ static void dd_insert_requests(struct blk_mq_hw_ctx *hctx,
 	}
 	spin_unlock(&dd->lock);
 
+	rq_list_hierarchy_end_io_acct(&free, STAGE_DEADLINE);
 	blk_mq_free_requests(&free);
 }
 
