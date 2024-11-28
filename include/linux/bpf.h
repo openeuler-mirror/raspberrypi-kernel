@@ -688,7 +688,8 @@ enum bpf_type_flag {
 	/* Memory must be aligned on some architectures, used in combination with
 	 * MEM_FIXED_SIZE.
 	 */
-	MEM_ALIGNED		= BIT(17 + BPF_BASE_TYPE_BITS),
+	/* Fix kabi by inserting broken enum as bpf_type_flag is used only in kernel */
+	KABI_BROKEN_INSERT_ENUM(MEM_ALIGNED = BIT(17 + BPF_BASE_TYPE_BITS))
 
 	__BPF_TYPE_FLAG_MAX,
 	__BPF_TYPE_LAST_FLAG	= __BPF_TYPE_FLAG_MAX - 1,
@@ -726,6 +727,9 @@ enum bpf_arg_type {
 	ARG_ANYTHING,		/* any (initialized) argument is ok */
 	ARG_PTR_TO_SPIN_LOCK,	/* pointer to bpf_spin_lock */
 	ARG_PTR_TO_SOCK_COMMON,	/* pointer to sock_common */
+	/* Fix kabi by removing broken enum as bpf_arg_type is used only in kernel */
+	KABI_BROKEN_REMOVE_ENUM(ARG_PTR_TO_INT)
+	KABI_BROKEN_REMOVE_ENUM(ARG_PTR_TO_LONG)
 	ARG_PTR_TO_SOCKET,	/* pointer to bpf_sock (fullsock) */
 	ARG_PTR_TO_BTF_ID,	/* pointer to in-kernel struct */
 	ARG_PTR_TO_RINGBUF_MEM,	/* pointer to dynamically reserved ringbuf memory */
