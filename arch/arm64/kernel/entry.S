@@ -195,8 +195,8 @@ alternative_cb_end
 #endif
 	.endm
 
-	.macro	kernel_entry, el, regsize = 64
-	.if	\el == 0
+	.macro	kernel_entry, el, regsize = 64, fast_mode = std
+	.if	\el == 0 && \fast_mode == std
 	alternative_insn nop, SET_PSTATE_DIT(1), ARM64_HAS_DIT
 	.endif
 	.if	\regsize == 32
@@ -228,12 +228,16 @@ alternative_cb_end
 	 * Ensure MDSCR_EL1.SS is clear, since we can unmask debug exceptions
 	 * when scheduling.
 	 */
+	.if \fast_mode == std
 	ldr	x19, [tsk, #TSK_TI_FLAGS]
 	disable_step_tsk x19, x20
+	.endif
 
 	/* Check for asynchronous tag check faults in user space */
+	.if \fast_mode == std
 	ldr	x0, [tsk, THREAD_SCTLR_USER]
 	check_mte_async_tcf x22, x23, x0
+	.endif
 
 #ifdef CONFIG_ARM64_PTR_AUTH
 alternative_if ARM64_HAS_ADDRESS_AUTH
@@ -257,14 +261,19 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 alternative_else_nop_endif
 #endif
 
+	.if \fast_mode == std
 	apply_ssbd 1, x22, x23
+	.endif
 
+	.if \fast_mode == std
 	mte_set_kernel_gcr x22, x23
+	.endif
 
 	/*
 	 * Any non-self-synchronizing system register updates required for
 	 * kernel entry should be placed before this point.
 	 */
+	.if \fast_mode == std
 alternative_if ARM64_MTE
 	isb
 	b	1f
@@ -273,6 +282,7 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 	isb
 alternative_else_nop_endif
 1:
+	.endif
 
 	scs_load_current
 	.else
@@ -296,9 +306,11 @@ alternative_else_nop_endif
 	add	x29, sp, #S_STACKFRAME
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
+.if \fast_mode == std
 alternative_if_not ARM64_HAS_PAN
 	bl	__swpan_entry_el\el
 alternative_else_nop_endif
+.endif
 #endif
 
 	stp	x22, x23, [sp, #S_PC]
@@ -332,7 +344,7 @@ alternative_else_nop_endif
 	*/
 	.endm
 
-	.macro	kernel_exit, el
+	.macro	kernel_exit, el, fast_mode = std
 	.if	\el != 0
 	disable_daif
 	.endif
@@ -356,14 +368,18 @@ alternative_else_nop_endif
 	ldp	x21, x22, [sp, #S_PC]		// load ELR, SPSR
 
 #ifdef CONFIG_ARM64_SW_TTBR0_PAN
+.if \fast_mode == std
 alternative_if_not ARM64_HAS_PAN
 	bl	__swpan_exit_el\el
 alternative_else_nop_endif
+.endif
 #endif
 
 	.if	\el == 0
 	ldr	x23, [sp, #S_SP]		// load return stack pointer
 	msr	sp_el0, x23
+
+	.if \fast_mode == std
 	tst	x22, #PSR_MODE32_BIT		// native task?
 	b.eq	3f
 
@@ -378,11 +394,15 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
+	.endif
+
 	scs_save tsk
 
 	/* Ignore asynchronous tag check faults in the uaccess routines */
+	.if \fast_mode == std
 	ldr	x0, [tsk, THREAD_SCTLR_USER]
 	clear_mte_async_tcf x0
+	.endif
 
 #ifdef CONFIG_ARM64_PTR_AUTH
 alternative_if ARM64_HAS_ADDRESS_AUTH
@@ -404,9 +424,13 @@ alternative_if ARM64_HAS_ADDRESS_AUTH
 alternative_else_nop_endif
 #endif
 
+	.if \fast_mode == std
 	mte_set_user_gcr tsk, x0, x1
+	.endif
 
+	.if \fast_mode == std
 	apply_ssbd 0, x0, x1
+	.endif
 	.endif
 
 	msr	elr_el1, x21			// set up the return data
@@ -429,6 +453,7 @@ alternative_else_nop_endif
 
 	.if	\el == 0
 #ifdef CONFIG_UNMAP_KERNEL_AT_EL0
+	.if \fast_mode == std
 	alternative_insn "b .L_skip_tramp_exit_\@", nop, ARM64_UNMAP_KERNEL_AT_EL0
 
 	msr	far_el1, x29
@@ -441,22 +466,28 @@ alternative_else_nop_endif
 	br		x29
 
 .L_skip_tramp_exit_\@:
+	.endif
 #endif
+
 	ldr	lr, [sp, #S_LR]
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	/* This must be after the last explicit memory access */
+	.if \fast_mode == std
 alternative_if ARM64_WORKAROUND_SPECULATIVE_UNPRIV_LOAD
 	tlbi	vale1, xzr
 	dsb	nsh
 alternative_else_nop_endif
+	.endif
 	eret
 	.else
 	ldr	lr, [sp, #S_LR]
 	add	sp, sp, #PT_REGS_SIZE		// restore sp
 
 	/* Ensure any device/NC reads complete */
+	.if \fast_mode == std
 	alternative_insn nop, "dmb sy", ARM64_WORKAROUND_1508412
+	.endif
 
 	eret
 	.endif
@@ -569,9 +600,140 @@ SYM_CODE_START_LOCAL(__bad_stack)
 SYM_CODE_END(__bad_stack)
 #endif /* CONFIG_VMAP_STACK */
 
+#ifdef CONFIG_FAST_SYSCALL
+	.macro check_esr_el1_ec_svc64
+	/* Only support SVC64 for now */
+	mrs	x20, esr_el1
+	lsr	w20, w20, #ESR_ELx_EC_SHIFT
+	cmp	x20, #ESR_ELx_EC_SVC64
+	.endm
+
+	.macro check_syscall_nr
+	cmp	x8, __NR_syscalls
+	.endm
+
+	.macro check_xcall_enable
+	/* x21 = task_struct->xcall_enable */
+	ldr_this_cpu	x20, __entry_task, x21
+	ldr	x21, [x20, #TSK_XCALL]
+	/* x20 = sc_no / 8 */
+	lsr	x20, x8, 3
+	ldr	x21, [x21, x20]
+	/* x8 = sc_no % 8 */
+	and	x8, x8, 7
+	mov	x20, 1
+	lsl	x20, x20, x8
+	and	x21, x21, x20
+	cmp	x21, 0
+	.endm
+
+	.macro check_xcall_pre_kernel_entry
+	stp	x20, x21, [sp, #0]
+	/* is ESR_ELx_EC_SVC64 */
+	check_esr_el1_ec_svc64
+	bne	.Lskip_xcall\@
+	/* x8 >= __NR_syscalls */
+	check_syscall_nr
+	bhs	.Lskip_xcall\@
+	str	x8, [sp, #16]
+	/* is xcall enabled */
+	check_xcall_enable
+	ldr	x8, [sp, #16]
+	beq	.Lskip_xcall\@
+	ldp	x20, x21, [sp, #0]
+	/* do xcall */
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_entry 0, 64, xcall
+#else
+	kernel_entry 0, 64
+#endif
+	mov	x0, sp
+	bl	el0t_64_xcall_handler
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_exit 0, xcall
+#else
+	b	ret_to_user
+#endif
+.Lskip_xcall\@:
+	ldp	x20, x21, [sp, #0]
+	.endm
+#endif
+
+#ifdef CONFIG_FAST_IRQ
+.macro check_xint_pre_kernel_entry el:req, ht:req
+	stp	x0, x1, [sp, #0]
+	stp	x2, x3, [sp, #16]
+
+	ldr	x0, =irqnr_xint_map
+	/* get hpp irqnr */
+	mrs_s	x1, SYS_ICC_HPPIR1_EL1
+
+	/* xint hwirq can not exceed 1020 */
+	cmp     x1, 1020
+	b.ge	.Lskip_xint\@
+
+	/* x2 = irqnr % 8 */
+	and	x2, x1, #7
+	/* x3 = irqnr / 8 */
+	lsr	x3, x1, #3
+	/* x1 is the byte of irqnr in irqnr_xint_map */
+	ldr	x1, [x0, x3]
+
+	/* Get the check mask */
+	mov	x3, #1
+	/* x3 = 1 << (irqnr % 8) */
+	lsl	x3, x3, x2
+
+	/* x1 = x1 & x3 */
+	ands	x1, x1, x3
+	b.eq	.Lskip_xint\@
+
+	ldp	x0, x1, [sp, #0]
+	ldp	x2, x3, [sp, #16]
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_entry \el, 64, xint
+#else
+	kernel_entry \el, 64
+#endif
+	mov	x0, sp
+	bl	el\el\ht\()_64_xint_handler
+#ifdef CONFIG_SECURITY_FEATURE_BYPASS
+	kernel_exit \el, xint
+#else
+	.if	\el == 0
+	b	ret_to_user
+	.else
+	b	ret_to_kernel
+	.endif
+#endif
+
+.Lskip_xint\@:
+	ldp	x0, x1, [sp, #0]
+	ldp	x2, x3, [sp, #16]
+.endm
+#endif
 
 	.macro entry_handler el:req, ht:req, regsize:req, label:req
 SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
+#ifdef CONFIG_FAST_SYSCALL
+	.if \el == 0 && \regsize == 64 && \label == sync
+	/* Only support el0 aarch64 sync exception */
+	alternative_if_not ARM64_HAS_XCALL
+		b .Lret_to_kernel_entry\@
+	alternative_else_nop_endif
+		check_xcall_pre_kernel_entry
+	.Lret_to_kernel_entry\@:
+	.endif
+#endif
+#ifdef CONFIG_FAST_IRQ
+	.if \regsize == 64 && \label == irq && (( \el == 0 && \ht == t) || (\el == 1 && \ht == h))
+	alternative_if_not ARM64_HAS_XINT
+		b .Lskip_check_xint\@
+	alternative_else_nop_endif
+		check_xint_pre_kernel_entry \el, \ht
+.Lskip_check_xint\@:
+	.endif
+#endif
 	kernel_entry \el, \regsize
 	mov	x0, sp
 	bl	el\el\ht\()_\regsize\()_\label\()_handler

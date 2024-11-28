@@ -512,6 +512,119 @@ static __always_inline void __el1_pnmi(struct pt_regs *regs,
 	arm64_exit_nmi(regs);
 }
 
+#ifdef CONFIG_FAST_IRQ
+static __always_inline void __el1_xint(struct pt_regs *regs,
+				       void (*handler)(struct pt_regs *))
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	enter_from_kernel_mode(regs);
+#endif
+
+	xint_enter_rcu();
+	do_interrupt_handler(regs, handler);
+	xint_exit_rcu();
+
+	arm64_preempt_schedule_irq();
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	exit_to_kernel_mode(regs);
+#endif
+}
+
+static void noinstr el1_xint(struct pt_regs *regs, u64 nmi_flag,
+			     void (*handler)(struct pt_regs *),
+			     void (*nmi_handler)(struct pt_regs *))
+{
+	/* Is there a NMI to handle? */
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
+		__el1_nmi(regs, nmi_handler);
+		return;
+	}
+#endif
+
+	write_sysreg(DAIF_PROCCTX_NOIRQ, daif);
+
+	if (IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) && !interrupts_enabled(regs))
+		__el1_pnmi(regs, handler);
+	else
+		__el1_xint(regs, handler);
+}
+
+asmlinkage void noinstr el1h_64_xint_handler(struct pt_regs *regs)
+{
+	el1_xint(regs, ISR_EL1_IS, handle_arch_irq, handle_arch_nmi_irq);
+}
+
+static __always_inline void xint_exit_to_user_mode_prepare(struct pt_regs *regs)
+{
+	unsigned long flags;
+
+	local_daif_mask();
+
+	flags = read_thread_flags();
+	if (unlikely(flags & _TIF_WORK_MASK))
+		do_notify_resume(regs, flags);
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_sys_exit();
+#endif
+}
+
+static __always_inline void xint_exit_to_user_mode(struct pt_regs *regs)
+{
+	xint_exit_to_user_mode_prepare(regs);
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	mte_check_tfsr_exit();
+	__exit_to_user_mode();
+#endif
+}
+
+static void noinstr el0_xint(struct pt_regs *regs, u64 nmi_flag,
+			     void (*handler)(struct pt_regs *),
+			     void (*nmi_handler)(struct pt_regs *))
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	enter_from_user_mode(regs);
+
+	/* Is there a NMI to handle? */
+	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
+		/*
+		 * Any system with FEAT_NMI should have FEAT_CSV2 and
+		 * not be affected by Spectre v2 so we don't mitigate
+		 * here.
+		 */
+
+		arm64_enter_nmi(regs);
+		do_interrupt_handler(regs, nmi_handler);
+		arm64_exit_nmi(regs);
+
+		exit_to_user_mode(regs);
+		return;
+	}
+#endif
+
+	write_sysreg(DAIF_PROCCTX_NOIRQ, daif);
+
+#ifndef CONFIG_SECURITY_FEATURE_BYPASS
+	if (regs->pc & BIT(55))
+		arm64_apply_bp_hardening();
+#endif
+
+	xint_enter_rcu();
+	do_interrupt_handler(regs, handler);
+	xint_exit_rcu();
+
+	xint_exit_to_user_mode(regs);
+}
+
+
+asmlinkage void noinstr el0t_64_xint_handler(struct pt_regs *regs)
+{
+	el0_xint(regs, ISR_EL1_IS, handle_arch_irq, handle_arch_nmi_irq);
+}
+#endif /* CONFIG_FAST_IRQ */
+
 static __always_inline void __el1_irq(struct pt_regs *regs,
 				      void (*handler)(struct pt_regs *))
 {
@@ -713,6 +826,55 @@ static void noinstr el0_fpac(struct pt_regs *regs, unsigned long esr)
 	do_el0_fpac(regs, esr);
 	exit_to_user_mode(regs);
 }
+
+#ifdef CONFIG_FAST_SYSCALL
+/*
+ * Copy from exit_to_user_mode_prepare
+ */
+static __always_inline void xcall_exit_to_user_mode_prepare(struct pt_regs *regs)
+{
+	unsigned long flags;
+
+	local_daif_mask();
+
+	flags = read_thread_flags();
+	if (unlikely(flags & _TIF_WORK_MASK))
+		do_notify_resume(regs, flags);
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_sys_exit();
+#endif
+}
+
+static __always_inline void xcall_exit_to_user_mode(struct pt_regs *regs)
+{
+	xcall_exit_to_user_mode_prepare(regs);
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	mte_check_tfsr_exit();
+	__exit_to_user_mode();
+#endif
+}
+
+/* Copy from el0_sync */
+static void noinstr el0_xcall(struct pt_regs *regs)
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	enter_from_user_mode(regs);
+#endif
+#ifndef CONFIG_SECURITY_FEATURE_BYPASS
+	cortex_a76_erratum_1463225_svc_handler();
+#endif
+	fp_user_discard();
+	local_daif_restore(DAIF_PROCCTX);
+	do_el0_svc(regs);
+	xcall_exit_to_user_mode(regs);
+}
+
+asmlinkage void noinstr el0t_64_xcall_handler(struct pt_regs *regs)
+{
+	el0_xcall(regs);
+}
+#endif
 
 asmlinkage void noinstr el0t_64_sync_handler(struct pt_regs *regs)
 {
