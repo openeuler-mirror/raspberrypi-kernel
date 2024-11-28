@@ -223,51 +223,9 @@ static inline bool blk_path_error(blk_status_t error)
 	return true;
 }
 
-/*
- * From most significant bit:
- * 1 bit: reserved for other usage, see below
- * 12 bits: original size of bio
- * 51 bits: issue time of bio
- */
-#define BIO_ISSUE_RES_BITS      1
-#define BIO_ISSUE_SIZE_BITS     12
-#define BIO_ISSUE_RES_SHIFT     (64 - BIO_ISSUE_RES_BITS)
-#define BIO_ISSUE_SIZE_SHIFT    (BIO_ISSUE_RES_SHIFT - BIO_ISSUE_SIZE_BITS)
-#define BIO_ISSUE_TIME_MASK     ((1ULL << BIO_ISSUE_SIZE_SHIFT) - 1)
-#define BIO_ISSUE_SIZE_MASK     \
-	(((1ULL << BIO_ISSUE_SIZE_BITS) - 1) << BIO_ISSUE_SIZE_SHIFT)
-#define BIO_ISSUE_RES_MASK      (~((1ULL << BIO_ISSUE_RES_SHIFT) - 1))
-
-/* Reserved bit for blk-throtl */
-#define BIO_ISSUE_THROTL_SKIP_LATENCY (1ULL << 63)
-
 struct bio_issue {
 	u64 value;
 };
-
-static inline u64 __bio_issue_time(u64 time)
-{
-	return time & BIO_ISSUE_TIME_MASK;
-}
-
-static inline u64 bio_issue_time(struct bio_issue *issue)
-{
-	return __bio_issue_time(issue->value);
-}
-
-static inline sector_t bio_issue_size(struct bio_issue *issue)
-{
-	return ((issue->value & BIO_ISSUE_SIZE_MASK) >> BIO_ISSUE_SIZE_SHIFT);
-}
-
-static inline void bio_issue_init(struct bio_issue *issue,
-				       sector_t size)
-{
-	size &= (1ULL << BIO_ISSUE_SIZE_BITS) - 1;
-	issue->value = ((issue->value & BIO_ISSUE_RES_MASK) |
-			(ktime_get_ns() & BIO_ISSUE_TIME_MASK) |
-			((u64)size << BIO_ISSUE_SIZE_SHIFT));
-}
 
 typedef __u32 __bitwise blk_opf_t;
 
@@ -332,12 +290,25 @@ struct bio {
 
 	struct bio_set		*bi_pool;
 
-
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE(1, u64 hierarchy_time)
+	KABI_REPLACE(_KABI_RESERVE(2); _KABI_RESERVE(3),
+		     struct list_head hierarchy_list)
+#else
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
+#endif
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+	KABI_USE(4, u64 bi_alloc_time_ns)
+#else
 	KABI_RESERVE(4)
+#endif
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	KABI_USE(5, struct pid *pid)
+#else
 	KABI_RESERVE(5)
+#endif
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
 	KABI_RESERVE(8)
@@ -372,6 +343,13 @@ enum {
 	BIO_QOS_MERGED,		/* but went through rq_qos merge path */
 	BIO_REMAPPED,
 	BIO_ZONE_WRITE_LOCKED,	/* Owns a zoned device zone write lock */
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	BIO_HAS_DATA,		/* bio contain data. */
+	BIO_HIERARCHY_ACCT,	/*
+				 * This bio has already been subjected to
+				 * blk-io-hierarchy, don't do it again.
+				 */
+#endif
 	BIO_FLAG_LAST
 };
 
@@ -496,6 +474,36 @@ enum stat_group {
 	STAT_FLUSH,
 
 	NR_STAT_GROUPS
+};
+
+enum stage_group {
+#ifdef CONFIG_BLK_DEV_THROTTLING
+	STAGE_THROTTLE,
+#endif
+#ifdef CONFIG_BLK_WBT
+	STAGE_WBT,
+#endif
+#ifdef CONFIG_BLK_CGROUP_IOCOST
+	STAGE_IOCOST,
+#endif
+	STAGE_GETTAG,
+	NR_BIO_STAGE_GROUPS,
+	STAGE_PLUG = NR_BIO_STAGE_GROUPS,
+#if IS_ENABLED(CONFIG_MQ_IOSCHED_DEADLINE)
+	STAGE_DEADLINE,
+#endif
+#if IS_ENABLED(CONFIG_IOSCHED_BFQ)
+	STAGE_BFQ,
+#endif
+#if IS_ENABLED(CONFIG_MQ_IOSCHED_KYBER)
+	STAGE_KYBER,
+#endif
+	STAGE_HCTX,
+	STAGE_REQUEUE,
+	STAGE_RQ_DRIVER,
+	NR_RQ_STAGE_GROUPS,
+	STAGE_BIO = NR_RQ_STAGE_GROUPS,
+	NR_STAGE_GROUPS,
 };
 
 static inline enum req_op bio_op(const struct bio *bio)

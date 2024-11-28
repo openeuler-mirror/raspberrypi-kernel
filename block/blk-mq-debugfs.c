@@ -12,6 +12,7 @@
 #include "blk-mq-debugfs.h"
 #include "blk-mq-sched.h"
 #include "blk-rq-qos.h"
+#include "blk-io-hierarchy/stats.h"
 
 static int queue_poll_stat_show(void *data, struct seq_file *m)
 {
@@ -280,9 +281,13 @@ static const char *blk_mq_rq_state_name(enum mq_rq_state rq_state)
 	return blk_mq_rq_state_name_array[rq_state];
 }
 
-int __blk_mq_debugfs_rq_show(struct seq_file *m, struct request *rq)
+/*
+ * This helper will dump general information for @rq into @m, started with '{'
+ * and doesn't end with '}', caller must include a closing curly brace '}' at
+ * the end after adding the custom string.
+ */
+void debugfs_rq_show(struct seq_file *m, struct request *rq)
 {
-	const struct blk_mq_ops *const mq_ops = rq->q->mq_ops;
 	const enum req_op op = req_op(rq);
 	const char *op_str = blk_op_str(op);
 
@@ -300,6 +305,13 @@ int __blk_mq_debugfs_rq_show(struct seq_file *m, struct request *rq)
 	seq_printf(m, ", .state=%s", blk_mq_rq_state_name(blk_mq_rq_state(rq)));
 	seq_printf(m, ", .tag=%d, .internal_tag=%d", rq->tag,
 		   rq->internal_tag);
+}
+
+int __blk_mq_debugfs_rq_show(struct seq_file *m, struct request *rq)
+{
+	const struct blk_mq_ops *const mq_ops = rq->q->mq_ops;
+
+	debugfs_rq_show(m, rq);
 	if (mq_ops->show_rq)
 		mq_ops->show_rq(m, rq);
 	seq_puts(m, "}\n");
@@ -642,8 +654,8 @@ static const struct blk_mq_debugfs_attr blk_mq_debugfs_ctx_attrs[] = {
 	{},
 };
 
-static void debugfs_create_files(struct dentry *parent, void *data,
-				 const struct blk_mq_debugfs_attr *attr)
+void debugfs_create_files(struct dentry *parent, void *data,
+			  const struct blk_mq_debugfs_attr *attr)
 {
 	if (IS_ERR_OR_NULL(parent))
 		return;
@@ -686,6 +698,8 @@ void blk_mq_debugfs_register(struct request_queue *q)
 			rqos = rqos->next;
 		}
 	}
+
+	blk_mq_debugfs_register_hierarchy_stats(q);
 }
 
 static void blk_mq_debugfs_register_ctx(struct blk_mq_hw_ctx *hctx,

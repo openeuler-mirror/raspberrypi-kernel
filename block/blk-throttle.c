@@ -14,6 +14,7 @@
 #include "blk-cgroup-rwstat.h"
 #include "blk-stat.h"
 #include "blk-throttle.h"
+#include "blk-io-hierarchy/stats.h"
 
 /* Max dispatch from a group in 1 round */
 #define THROTL_GRP_QUANTUM 8
@@ -1291,6 +1292,8 @@ static void blk_throtl_dispatch_work_fn(struct work_struct *work)
 			bio_list_add(&bio_list_on_stack, bio);
 	spin_unlock_irq(&q->queue_lock);
 
+	bio_list_hierarchy_end_io_acct(&bio_list_on_stack, STAGE_THROTTLE);
+
 	if (!bio_list_empty(&bio_list_on_stack)) {
 		blk_start_plug(&plug);
 		while ((bio = bio_list_pop(&bio_list_on_stack)))
@@ -1841,7 +1844,7 @@ static bool throtl_tg_is_idle(struct throtl_grp *tg)
 	time = min_t(unsigned long, MAX_IDLE_TIME, 4 * tg->idletime_threshold);
 	ret = tg->latency_target == DFL_LATENCY_TARGET ||
 	      tg->idletime_threshold == DFL_IDLE_THRESHOLD ||
-	      (ktime_get_ns() >> 10) - tg->last_finish_time > time ||
+	      (blk_time_get_ns() >> 10) - tg->last_finish_time > time ||
 	      tg->avg_idletime > tg->idletime_threshold ||
 	      (tg->latency_target && tg->bio_cnt &&
 		tg->bad_bio_cnt * 5 < tg->bio_cnt);
@@ -2086,7 +2089,7 @@ static void blk_throtl_update_idletime(struct throtl_grp *tg)
 	if (last_finish_time == 0)
 		return;
 
-	now = ktime_get_ns() >> 10;
+	now = blk_time_get_ns() >> 10;
 	if (now <= last_finish_time ||
 	    last_finish_time == tg->checked_last_finish_time)
 		return;
@@ -2283,6 +2286,7 @@ again:
 	td->nr_queued[rw]++;
 	throtl_add_bio_tg(bio, qn, tg);
 	throttled = true;
+	bio_hierarchy_start_io_acct(bio, STAGE_THROTTLE);
 
 	/*
 	 * Update @tg's dispatch time and force schedule dispatch if @tg
@@ -2353,7 +2357,7 @@ void blk_throtl_bio_endio(struct bio *bio)
 	if (!tg->td->limit_valid[LIMIT_LOW])
 		return;
 
-	finish_time_ns = ktime_get_ns();
+	finish_time_ns = blk_time_get_ns();
 	tg->last_finish_time = finish_time_ns >> 10;
 
 	start_time = bio_issue_time(&bio->bi_issue) >> 10;
@@ -2443,6 +2447,8 @@ void blk_throtl_exit(struct gendisk *disk)
 	del_timer_sync(&q->td->service_queue.pending_timer);
 	throtl_shutdown_wq(q);
 	blkcg_deactivate_policy(disk, &blkcg_policy_throtl);
+	blk_mq_unregister_hierarchy(q, STAGE_THROTTLE);
+
 	free_percpu(q->td->latency_buckets[READ]);
 	free_percpu(q->td->latency_buckets[WRITE]);
 	kfree(q->td);
@@ -2477,6 +2483,8 @@ void blk_throtl_register(struct gendisk *disk)
 	if (!td->track_bio_latency)
 		blk_stat_enable_accounting(q);
 #endif
+
+	blk_mq_register_hierarchy(q, STAGE_THROTTLE);
 }
 
 #ifdef CONFIG_BLK_DEV_THROTTLING_LOW

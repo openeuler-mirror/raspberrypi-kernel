@@ -158,6 +158,8 @@ struct blk_mq_alloc_data {
 	/* input & output parameter */
 	struct blk_mq_ctx *ctx;
 	struct blk_mq_hw_ctx *hctx;
+
+	KABI_EXTEND(struct bio *bio)
 };
 
 struct blk_mq_tags *blk_mq_init_tags(unsigned int nr_tags,
@@ -444,5 +446,28 @@ do {								\
 
 #define blk_mq_run_dispatch_ops(q, dispatch_ops)		\
 	__blk_mq_run_dispatch_ops(q, true, dispatch_ops)	\
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+static inline void blk_mq_get_alloc_task(struct request *rq, struct bio *bio)
+{
+	rq->pid = bio ? get_pid(bio->pid) : get_pid(task_pid(current));
+}
+
+static inline void blk_mq_put_alloc_task(struct request *rq)
+{
+	if (rq->pid) {
+		put_pid(rq->pid);
+		rq->pid = NULL;
+	}
+}
+#else
+static inline void blk_mq_get_alloc_task(struct request *rq, struct bio *bio)
+{
+}
+
+static inline void blk_mq_put_alloc_task(struct request *rq)
+{
+}
+#endif
 
 #endif

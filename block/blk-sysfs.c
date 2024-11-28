@@ -19,6 +19,7 @@
 #include "blk-wbt.h"
 #include "blk-cgroup.h"
 #include "blk-throttle.h"
+#include "blk-io-hierarchy/stats.h"
 
 struct queue_sysfs_entry {
 	struct attribute attr;
@@ -818,6 +819,16 @@ static void blk_debugfs_remove(struct gendisk *disk)
 	mutex_unlock(&q->debugfs_mutex);
 }
 
+static void blk_mq_register_default_hierarchy(struct request_queue *q)
+{
+	blk_mq_register_hierarchy(q, STAGE_GETTAG);
+	blk_mq_register_hierarchy(q, STAGE_PLUG);
+	blk_mq_register_hierarchy(q, STAGE_HCTX);
+	blk_mq_register_hierarchy(q, STAGE_REQUEUE);
+	blk_mq_register_hierarchy(q, STAGE_RQ_DRIVER);
+	blk_mq_register_hierarchy(q, STAGE_BIO);
+}
+
 /**
  * blk_register_queue - register a block layer queue with sysfs
  * @disk: Disk of which the request queue should be registered with sysfs.
@@ -859,6 +870,9 @@ int blk_register_queue(struct gendisk *disk)
 	ret = blk_crypto_sysfs_register(disk);
 	if (ret)
 		goto out_elv_unregister;
+
+	if (queue_is_mq(q))
+		blk_mq_register_default_hierarchy(q);
 
 	blk_queue_flag_set(QUEUE_FLAG_REGISTERED, q);
 	wbt_enable_default(disk);

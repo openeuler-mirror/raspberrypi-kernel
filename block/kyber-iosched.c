@@ -18,6 +18,7 @@
 #include "blk-mq.h"
 #include "blk-mq-debugfs.h"
 #include "blk-mq-sched.h"
+#include "blk-io-hierarchy/stats.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/kyber.h>
@@ -424,6 +425,7 @@ static int kyber_init_sched(struct request_queue *q, struct elevator_type *e)
 	eq->elevator_data = kqd;
 	q->elevator = eq;
 
+	blk_mq_register_hierarchy(q, STAGE_KYBER);
 	return 0;
 }
 
@@ -432,6 +434,7 @@ static void kyber_exit_sched(struct elevator_queue *e)
 	struct kyber_queue_data *kqd = e->elevator_data;
 	int i;
 
+	blk_mq_unregister_hierarchy(kqd->q, STAGE_KYBER);
 	timer_shutdown_sync(&kqd->timer);
 	blk_stat_disable_accounting(kqd->q);
 
@@ -594,6 +597,7 @@ static void kyber_insert_requests(struct blk_mq_hw_ctx *hctx,
 	struct kyber_hctx_data *khd = hctx->sched_data;
 	struct request *rq, *next;
 
+	rq_list_hierarchy_start_io_acct(rq_list, STAGE_KYBER);
 	list_for_each_entry_safe(rq, next, rq_list, queuelist) {
 		unsigned int sched_domain = kyber_sched_domain(rq->cmd_flags);
 		struct kyber_ctx_queue *kcq = &khd->kcqs[rq->mq_ctx->index_hw[hctx->type]];
@@ -843,6 +847,9 @@ static struct request *kyber_dispatch_request(struct blk_mq_hw_ctx *hctx)
 	rq = NULL;
 out:
 	spin_unlock(&khd->lock);
+
+	if (rq)
+		rq_hierarchy_end_io_acct(rq, STAGE_KYBER);
 	return rq;
 }
 

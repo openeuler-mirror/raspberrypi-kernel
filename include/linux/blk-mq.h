@@ -190,11 +190,24 @@ struct request {
 	rq_end_io_fn *end_io;
 	void *end_io_data;
 
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+	KABI_USE(1, u64 bi_alloc_time_ns)
+#else
 	KABI_RESERVE(1)
+#endif
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	KABI_USE(2, struct pid *pid)
+#else
 	KABI_RESERVE(2)
-	KABI_RESERVE(3)
+#endif
+	KABI_USE(3, u64 io_end_time_ns)
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE2(4, bool flush_done, enum stage_group stage)
+	KABI_USE(5, unsigned long hierarchy_time)
+#else
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
+#endif
 	KABI_RESERVE(6)
 	KABI_RESERVE(7)
 	KABI_RESERVE(8)
@@ -957,6 +970,23 @@ static inline bool blk_should_fake_timeout(struct request_queue *q)
 	return false;
 }
 
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+void blk_rq_init_bi_alloc_time(struct request *rq, struct request *first_rq);
+void blk_rq_update_bi_alloc_time(struct request *rq, struct bio *bio,
+				 struct request *merged_rq);
+#else /* CONFIG_BLK_BIO_ALLOC_TIME */
+static inline void blk_rq_init_bi_alloc_time(struct request *rq,
+					     struct request *first_rq)
+{
+}
+
+static inline void blk_rq_update_bi_alloc_time(struct request *rq,
+					       struct bio *bio,
+					       struct request *merged_rq)
+{
+}
+#endif
+
 /**
  * blk_mq_rq_from_pdu - cast a PDU to a request
  * @pdu: the PDU (Protocol Data Unit) to be casted
@@ -1005,6 +1035,7 @@ static inline void blk_rq_bio_prep(struct request *rq, struct bio *bio,
 	rq->__data_len = bio->bi_iter.bi_size;
 	rq->bio = rq->biotail = bio;
 	rq->ioprio = bio_prio(bio);
+	blk_rq_update_bi_alloc_time(rq, bio, NULL);
 }
 
 void blk_mq_hctx_set_fq_lock_class(struct blk_mq_hw_ctx *hctx,

@@ -15,6 +15,7 @@
 #include "blk-mq-debugfs.h"
 #include "blk-mq-sched.h"
 #include "blk-wbt.h"
+#include "blk-io-hierarchy/stats.h"
 
 /*
  * Mark a hardware queue as needing a restart.
@@ -298,6 +299,7 @@ static int __blk_mq_sched_dispatch_requests(struct blk_mq_hw_ctx *hctx)
 	 */
 	if (!list_empty(&rq_list)) {
 		blk_mq_sched_mark_restart_hctx(hctx);
+		rq_list_hierarchy_end_io_acct(&rq_list, STAGE_HCTX);
 		if (!blk_mq_dispatch_rq_list(hctx, &rq_list, 0))
 			return 0;
 		need_dispatch = true;

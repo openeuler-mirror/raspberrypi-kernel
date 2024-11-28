@@ -24,6 +24,7 @@
 #include "blk.h"
 #include "blk-rq-qos.h"
 #include "blk-cgroup.h"
+#include "blk-io-hierarchy/stats.h"
 
 #define ALLOC_CACHE_THRESHOLD	16
 #define ALLOC_CACHE_MAX		256
@@ -223,6 +224,14 @@ void bio_uninit(struct bio *bio)
 		bio_integrity_free(bio);
 
 	bio_crypt_free_ctx(bio);
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	if (bio->pid) {
+		put_pid(bio->pid);
+		bio->pid = NULL;
+	}
+#endif
+	bio_hierarchy_end(bio);
 }
 EXPORT_SYMBOL(bio_uninit);
 
@@ -282,6 +291,19 @@ void bio_init(struct bio *bio, struct block_device *bdev, struct bio_vec *table,
 	bio->bi_max_vecs = max_vecs;
 	bio->bi_io_vec = table;
 	bio->bi_pool = NULL;
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TIME
+	bio->bi_alloc_time_ns = blk_time_get_ns();
+#endif
+
+#ifdef CONFIG_BLK_BIO_ALLOC_TASK
+	bio->pid = get_pid(task_pid(current));
+#endif
+
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	bio->hierarchy_time = 0;
+	INIT_LIST_HEAD(&bio->hierarchy_list);
+#endif
 }
 EXPORT_SYMBOL(bio_init);
 

@@ -30,6 +30,11 @@
 #include "blk-rq-qos.h"
 #include "elevator.h"
 
+#ifndef __GENKSYMS__
+#include "blk.h"
+#include "blk-io-hierarchy/stats.h"
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/wbt.h>
 
@@ -275,13 +280,12 @@ static inline bool stat_sample_valid(struct blk_rq_stat *stat)
 
 static u64 rwb_sync_issue_lat(struct rq_wb *rwb)
 {
-	u64 now, issue = READ_ONCE(rwb->sync_issue);
+	u64 issue = READ_ONCE(rwb->sync_issue);
 
 	if (!issue || !rwb->sync_cookie)
 		return 0;
 
-	now = ktime_to_ns(ktime_get());
-	return now - issue;
+	return blk_time_get_ns() - issue;
 }
 
 static inline unsigned int wbt_inflight(struct rq_wb *rwb)
@@ -561,21 +565,33 @@ static inline unsigned int get_limit(struct rq_wb *rwb, blk_opf_t opf)
 }
 
 struct wbt_wait_data {
+	struct bio *bio;
 	struct rq_wb *rwb;
 	enum wbt_flags wb_acct;
-	blk_opf_t opf;
 };
 
 static bool wbt_inflight_cb(struct rq_wait *rqw, void *private_data)
 {
 	struct wbt_wait_data *data = private_data;
-	return rq_wait_inc_below(rqw, get_limit(data->rwb, data->opf));
+
+	return rq_wait_inc_below(rqw, get_limit(data->rwb, data->bio->bi_opf));
 }
 
 static void wbt_cleanup_cb(struct rq_wait *rqw, void *private_data)
 {
 	struct wbt_wait_data *data = private_data;
+
 	wbt_rqw_done(data->rwb, rqw, data->wb_acct);
+}
+
+static void wbt_io_acct_cb(void *private_data, bool start)
+{
+	struct wbt_wait_data *data = private_data;
+
+	if (start)
+		bio_hierarchy_start_io_acct(data->bio, STAGE_WBT);
+	else
+		bio_hierarchy_end_io_acct(data->bio, STAGE_WBT);
 }
 
 /*
@@ -583,16 +599,17 @@ static void wbt_cleanup_cb(struct rq_wait *rqw, void *private_data)
  * the timer to kick off queuing again.
  */
 static void __wbt_wait(struct rq_wb *rwb, enum wbt_flags wb_acct,
-		       blk_opf_t opf)
+		       struct bio *bio)
 {
 	struct rq_wait *rqw = get_rq_wait(rwb, wb_acct);
 	struct wbt_wait_data data = {
 		.rwb = rwb,
 		.wb_acct = wb_acct,
-		.opf = opf,
+		.bio = bio,
 	};
 
-	rq_qos_wait(rqw, &data, wbt_inflight_cb, wbt_cleanup_cb);
+	rq_qos_wait(rqw, &data, wbt_inflight_cb, wbt_cleanup_cb,
+		    wbt_io_acct_cb);
 }
 
 static inline bool wbt_should_throttle(struct bio *bio)
@@ -656,7 +673,7 @@ static void wbt_wait(struct rq_qos *rqos, struct bio *bio)
 		return;
 	}
 
-	__wbt_wait(rwb, flags, bio->bi_opf);
+	__wbt_wait(rwb, flags, bio);
 
 	if (!blk_stat_is_active(rwb->cb))
 		rwb_arm_timer(rwb);
@@ -770,8 +787,10 @@ static void wbt_queue_depth_changed(struct rq_qos *rqos)
 static void wbt_exit(struct rq_qos *rqos)
 {
 	struct rq_wb *rwb = RQWB(rqos);
+	struct request_queue *q = rqos->disk->queue;
 
-	blk_stat_remove_callback(rqos->disk->queue, rwb->cb);
+	blk_mq_unregister_hierarchy(q, STAGE_WBT);
+	blk_stat_remove_callback(q, rwb->cb);
 	blk_stat_free_callback(rwb->cb);
 	kfree(rwb);
 }
@@ -934,6 +953,7 @@ int wbt_init(struct gendisk *disk)
 		goto err_free;
 
 	blk_stat_add_callback(q, rwb->cb);
+	blk_mq_register_hierarchy(q, STAGE_WBT);
 
 	return 0;
 

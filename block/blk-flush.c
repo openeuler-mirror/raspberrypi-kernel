@@ -73,6 +73,7 @@
 #include "blk.h"
 #include "blk-mq.h"
 #include "blk-mq-sched.h"
+#include "blk-io-hierarchy/stats.h"
 
 /* PREFLUSH/FUA sequences */
 enum {
@@ -143,7 +144,7 @@ static void blk_account_io_flush(struct request *rq)
 	part_stat_lock();
 	part_stat_inc(part, ios[STAT_FLUSH]);
 	part_stat_add(part, nsecs[STAT_FLUSH],
-		      ktime_get_ns() - rq->start_time_ns);
+		      blk_time_get_ns() - rq->start_time_ns);
 	part_stat_unlock();
 }
 
@@ -184,10 +185,12 @@ static void blk_flush_complete_seq(struct request *rq,
 		if (list_empty(pending))
 			fq->flush_pending_since = jiffies;
 		list_add_tail(&rq->queuelist, pending);
+		rq_hierarchy_start_io_acct(rq, STAGE_HCTX);
 		break;
 
 	case REQ_FSEQ_DATA:
 		fq->flush_data_in_flight++;
+		rq_hierarchy_start_io_acct(rq, STAGE_REQUEUE);
 		spin_lock(&q->requeue_lock);
 		list_move(&rq->queuelist, &q->requeue_list);
 		spin_unlock(&q->requeue_lock);
@@ -238,6 +241,7 @@ static enum rq_end_io_ret flush_end_io(struct request *flush_rq,
 	 * avoiding use-after-free.
 	 */
 	WRITE_ONCE(flush_rq->state, MQ_RQ_IDLE);
+	blk_mq_put_alloc_task(flush_rq);
 	if (fq->rq_status != BLK_STS_OK) {
 		error = fq->rq_status;
 		fq->rq_status = BLK_STS_OK;
@@ -262,6 +266,7 @@ static enum rq_end_io_ret flush_end_io(struct request *flush_rq,
 
 		BUG_ON(seq != REQ_FSEQ_PREFLUSH && seq != REQ_FSEQ_POSTFLUSH);
 		list_del_init(&rq->queuelist);
+		rq_hierarchy_end_io_acct(rq, STAGE_HCTX);
 		blk_flush_complete_seq(rq, fq, seq, error);
 	}
 
@@ -340,6 +345,9 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	flush_rq->cmd_flags |= (flags & REQ_DRV) | (flags & REQ_FAILFAST_MASK);
 	flush_rq->rq_flags |= RQF_FLUSH_SEQ;
 	flush_rq->end_io = flush_end_io;
+	blk_rq_init_bi_alloc_time(flush_rq, first_rq);
+	blk_mq_get_alloc_task(flush_rq, first_rq->bio);
+	blk_rq_hierarchy_stats_init(flush_rq);
 	/*
 	 * Order WRITE ->end_io and WRITE rq->ref, and its pair is the one
 	 * implied in refcount_inc_not_zero() called from
@@ -349,6 +357,7 @@ static void blk_kick_flush(struct request_queue *q, struct blk_flush_queue *fq,
 	smp_wmb();
 	req_ref_set(flush_rq, 1);
 
+	rq_hierarchy_start_io_acct(flush_rq, STAGE_REQUEUE);
 	spin_lock(&q->requeue_lock);
 	list_add_tail(&flush_rq->queuelist, &q->flush_list);
 	spin_unlock(&q->requeue_lock);
@@ -369,6 +378,8 @@ static enum rq_end_io_ret mq_flush_data_end_io(struct request *rq,
 		WARN_ON(rq->tag < 0);
 		blk_mq_put_driver_tag(rq);
 	}
+
+	blk_rq_hierarchy_set_flush_done(rq);
 
 	/*
 	 * After populating an empty queue, kick it to avoid stall.  Read

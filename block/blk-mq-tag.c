@@ -13,6 +13,7 @@
 #include "blk.h"
 #include "blk-mq.h"
 #include "blk-mq-sched.h"
+#include "blk-io-hierarchy/stats.h"
 
 /*
  * Recalculate wakeup batch when tag is shared by hctx.
@@ -159,6 +160,8 @@ unsigned int blk_mq_get_tag(struct blk_mq_alloc_data *data)
 	if (data->flags & BLK_MQ_REQ_NOWAIT)
 		return BLK_MQ_NO_TAG;
 
+	if (data->bio)
+		bio_hierarchy_start_io_acct(data->bio, STAGE_GETTAG);
 	ws = bt_wait_ptr(bt, data->hctx);
 	do {
 		struct sbitmap_queue *bt_prev;
@@ -210,6 +213,8 @@ unsigned int blk_mq_get_tag(struct blk_mq_alloc_data *data)
 	} while (1);
 
 	sbitmap_finish_wait(bt, ws, &wait);
+	if (data->bio)
+		bio_hierarchy_end_io_acct(data->bio, STAGE_GETTAG);
 
 found_tag:
 	/*

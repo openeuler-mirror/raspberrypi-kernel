@@ -575,7 +575,11 @@ struct request_queue {
 
 	bool			mq_sysfs_init_done;
 
+#ifdef CONFIG_BLK_IO_HIERARCHY_STATS
+	KABI_USE(1, struct blk_io_hierarchy_stats *io_hierarchy_stats)
+#else
 	KABI_RESERVE(1)
+#endif
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -1037,7 +1041,7 @@ struct blk_plug {
 
 	struct list_head cb_list; /* md requires an unplug callback */
 
-	KABI_RESERVE(1)
+	KABI_USE(1, u64 cur_ktime)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 };
@@ -1062,6 +1066,18 @@ static inline void blk_flush_plug(struct blk_plug *plug, bool async)
 		__blk_flush_plug(plug, async);
 }
 
+/*
+ * tsk == current here
+ */
+static inline void blk_plug_invalidate_ts(struct task_struct *tsk)
+{
+	struct blk_plug *plug = tsk->plug;
+
+	if (plug)
+		plug->cur_ktime = 0;
+	current->flags &= ~PF_BLOCK_TS;
+}
+
 int blkdev_issue_flush(struct block_device *bdev);
 long nr_blockdev_pages(void);
 #else /* CONFIG_BLOCK */
@@ -1082,6 +1098,10 @@ static inline void blk_finish_plug(struct blk_plug *plug)
 }
 
 static inline void blk_flush_plug(struct blk_plug *plug, bool async)
+{
+}
+
+static inline void blk_plug_invalidate_ts(struct task_struct *tsk)
 {
 }
 

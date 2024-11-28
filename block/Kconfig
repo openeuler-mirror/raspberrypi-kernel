@@ -36,6 +36,12 @@ config BLOCK_LEGACY_AUTOLOAD
 	  created on demand, but scripts that manually create device nodes and
 	  then call losetup might rely on this behavior.
 
+config BLK_BIO_ALLOC_TIME
+	bool
+
+config BLK_BIO_ALLOC_TASK
+	bool
+
 config BLK_RQ_ALLOC_TIME
 	bool
 
@@ -275,6 +281,7 @@ config BLK_IO_HUNG_TASK_CHECK
 	  if this is set, hungtask will complain about slow io even if such
 	  io is not hanged. Be careful to enable hungtask panic in this case.
 
+source "block/blk-io-hierarchy/Kconfig"
 source "block/partitions/Kconfig"
 
 config BLK_MQ_PCI

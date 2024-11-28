@@ -50,6 +50,7 @@
 #include "blk-cgroup.h"
 #include "blk-throttle.h"
 #include "blk-ioprio.h"
+#include "blk-io-hierarchy/stats.h"
 
 struct dentry *blk_debugfs_root;
 
@@ -835,6 +836,12 @@ void submit_bio_noacct(struct bio *bio)
 		break;
 	}
 
+	/*
+	 * On the one hand REQ_PREFLUSH | REQ_FUA can be cleared above, on the
+	 * other hand it doesn't make sense to count invalid bio. Split bio will
+	 * be accounted separately.
+	 */
+	bio_hierarchy_start(bio);
 	if (blk_throtl_bio(bio))
 		return;
 	submit_bio_noacct_nocheck(bio);
@@ -1101,6 +1108,7 @@ void blk_start_plug_nr_ios(struct blk_plug *plug, unsigned short nr_ios)
 	if (tsk->plug)
 		return;
 
+	plug->cur_ktime = 0;
 	plug->mq_list = NULL;
 	plug->cached_rq = NULL;
 	plug->nr_ios = min_t(unsigned short, nr_ios, BLK_MAX_REQUEST_COUNT);
@@ -1200,6 +1208,9 @@ void __blk_flush_plug(struct blk_plug *plug, bool from_schedule)
 	 */
 	if (unlikely(!rq_list_empty(plug->cached_rq)))
 		blk_mq_free_plug_rqs(plug);
+
+	plug->cur_ktime = 0;
+	current->flags &= ~PF_BLOCK_TS;
 }
 
 /**

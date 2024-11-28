@@ -184,6 +184,7 @@
 #include "blk-stat.h"
 #include "blk-wbt.h"
 #include "blk-cgroup.h"
+#include "blk-io-hierarchy/stats.h"
 
 #ifdef CONFIG_TRACEPOINTS
 
@@ -829,7 +830,7 @@ static int ioc_autop_idx(struct ioc *ioc, struct gendisk *disk)
 
 	/* step up/down based on the vrate */
 	vrate_pct = div64_u64(ioc->vtime_base_rate * 100, VTIME_PER_USEC);
-	now_ns = ktime_get_ns();
+	now_ns = blk_time_get_ns();
 
 	if (p->too_fast_vrate_pct && p->too_fast_vrate_pct <= vrate_pct) {
 		if (!ioc->autop_too_fast_at)
@@ -1044,7 +1045,7 @@ static void ioc_now(struct ioc *ioc, struct ioc_now *now)
 	unsigned seq;
 	u64 vrate;
 
-	now->now_ns = ktime_get();
+	now->now_ns = blk_time_get_ns();
 	now->now = ktime_to_us(now->now_ns);
 	vrate = atomic64_read(&ioc->vtime_rate);
 
@@ -2722,12 +2723,14 @@ retry_lock:
 
 	iocg_unlock(iocg, ioc_locked, &flags);
 
+	bio_hierarchy_start_io_acct(bio, STAGE_IOCOST);
 	while (true) {
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		if (wait.committed)
 			break;
 		io_schedule();
 	}
+	bio_hierarchy_end_io_acct(bio, STAGE_IOCOST);
 
 	/* waker already committed us, proceed */
 	finish_wait(&iocg->waitq, &wait.wait);
@@ -2823,7 +2826,7 @@ static void ioc_rqos_done(struct rq_qos *rqos, struct request *rq)
 		return;
 	}
 
-	on_q_ns = ktime_get_ns() - rq->alloc_time_ns;
+	on_q_ns = blk_time_get_ns() - rq->alloc_time_ns;
 	rq_wait_ns = rq->start_time_ns - rq->alloc_time_ns;
 	size_nsec = div64_u64(calc_size_vtime_cost(rq, ioc), VTIME_PER_NSEC);
 
@@ -2853,6 +2856,7 @@ static void ioc_rqos_exit(struct rq_qos *rqos)
 {
 	struct ioc *ioc = rqos_to_ioc(rqos);
 
+	blk_mq_unregister_hierarchy(rqos->disk->queue, STAGE_IOCOST);
 	blkcg_deactivate_policy(rqos->disk, &blkcg_policy_iocost);
 
 	spin_lock_irq(&ioc->lock);
@@ -2906,7 +2910,7 @@ static int blk_iocost_init(struct gendisk *disk)
 	ioc->vtime_base_rate = VTIME_PER_USEC;
 	atomic64_set(&ioc->vtime_rate, VTIME_PER_USEC);
 	seqcount_spinlock_init(&ioc->period_seqcount, &ioc->lock);
-	ioc->period_at = ktime_to_us(ktime_get());
+	ioc->period_at = ktime_to_us(blk_time_get());
 	atomic64_set(&ioc->cur_period, 0);
 	atomic_set(&ioc->hweight_gen, 0);
 
@@ -2928,6 +2932,8 @@ static int blk_iocost_init(struct gendisk *disk)
 	ret = blkcg_activate_policy(disk, &blkcg_policy_iocost);
 	if (ret)
 		goto err_del_qos;
+
+	blk_mq_register_hierarchy(disk->queue, STAGE_IOCOST);
 	return 0;
 
 err_del_qos:
