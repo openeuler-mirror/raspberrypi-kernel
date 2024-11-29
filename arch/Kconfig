@@ -1573,6 +1573,7 @@ config FAST_IRQ
 config DEBUG_FEATURE_BYPASS
 	bool "Bypass debug feature in fast syscall"
 	depends on FAST_SYSCALL || FAST_IRQ
+	depends on !LOCKDEP
 	default y
 	help
 	  This to bypass debug feature in fast syscall.
