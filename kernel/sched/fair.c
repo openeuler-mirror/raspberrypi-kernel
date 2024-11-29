@@ -14718,10 +14718,6 @@ void free_fair_sched_group(struct task_group *tg)
 	int i;
 
 	for_each_possible_cpu(i) {
-#ifdef CONFIG_QOS_SCHED
-		if (tg->cfs_rq && tg->cfs_rq[i])
-			unthrottle_qos_sched_group(tg->cfs_rq[i]);
-#endif
 		if (tg->cfs_rq)
 			kfree(tg->cfs_rq[i]);
 		if (tg->se)
@@ -14807,6 +14803,11 @@ void unregister_fair_sched_group(struct task_group *tg)
 	for_each_possible_cpu(cpu) {
 		if (tg->se[cpu])
 			remove_entity_load_avg(tg->se[cpu]);
+
+		#ifdef CONFIG_QOS_SCHED
+			if (tg->cfs_rq && tg->cfs_rq[cpu])
+				unthrottle_qos_sched_group(tg->cfs_rq[cpu]);
+		#endif
 
 		/*
 		 * Only empty task groups can be destroyed; so we can speculatively
