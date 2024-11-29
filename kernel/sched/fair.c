@@ -5466,13 +5466,19 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 		if (!throttled_hierarchy(cfs_rq)) {
 			list_add_leaf_cfs_rq(cfs_rq);
 		} else {
+#ifdef CONFIG_QOS_SCHED
+			if (cfs_rq->throttled != QOS_THROTTLED) {
+#endif
 #ifdef CONFIG_CFS_BANDWIDTH
-			struct rq *rq = rq_of(cfs_rq);
+				struct rq *rq = rq_of(cfs_rq);
 
-			if (cfs_rq_throttled(cfs_rq) && !cfs_rq->throttled_clock)
-				cfs_rq->throttled_clock = rq_clock(rq);
-			if (!cfs_rq->throttled_clock_self)
-				cfs_rq->throttled_clock_self = rq_clock(rq);
+				if (cfs_rq_throttled(cfs_rq) && !cfs_rq->throttled_clock)
+					cfs_rq->throttled_clock = rq_clock(rq);
+				if (!cfs_rq->throttled_clock_self)
+					cfs_rq->throttled_clock_self = rq_clock(rq);
+#endif
+#ifdef CONFIG_QOS_SCHED
+			}
 #endif
 		}
 	}
