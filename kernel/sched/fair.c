@@ -152,6 +152,7 @@ unsigned int sysctl_overload_detect_period = 5000;  /* in ms */
 unsigned int sysctl_offline_wait_interval = 100;  /* in ms */
 static int one_thousand = 1000;
 static int hundred_thousand = 100000;
+static int __unthrottle_qos_cfs_rqs(int cpu);
 static int unthrottle_qos_cfs_rqs(int cpu);
 static bool qos_smt_expelled(int this_cpu);
 #endif
@@ -6686,7 +6687,7 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 	 */
 	rq_clock_start_loop_update(rq);
 #ifdef CONFIG_QOS_SCHED
-	unthrottle_qos_cfs_rqs(cpu_of(rq));
+	__unthrottle_qos_cfs_rqs(cpu_of(rq));
 #endif
 
 	rcu_read_lock();
@@ -6713,9 +6714,6 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 	rcu_read_unlock();
 
 	rq_clock_stop_loop_update(rq);
-#ifdef CONFIG_QOS_SCHED
-	unthrottle_qos_cfs_rqs(cpu_of(rq));
-#endif
 }
 
 bool cfs_task_bw_constrained(struct task_struct *p)
