@@ -697,7 +697,9 @@ enum bpf_type_flag {
 	 * MEM_UNINIT means that memory needs to be initialized since it is also
 	 * read.
 	 */
-	MEM_WRITE		= BIT(18 + BPF_BASE_TYPE_BITS),
+
+	/* Fix kabi by inserting broken enum as bpf_type_flag is used only in kernel */
+	KABI_BROKEN_INSERT_ENUM(MEM_WRITE = BIT(18 + BPF_BASE_TYPE_BITS))
 
 	__BPF_TYPE_FLAG_MAX,
 	__BPF_TYPE_LAST_FLAG	= __BPF_TYPE_FLAG_MAX - 1,
@@ -762,7 +764,9 @@ enum bpf_arg_type {
 	/* Pointer to memory does not need to be initialized, since helper function
 	 * fills all bytes or clears them in error case.
 	 */
-	ARG_PTR_TO_UNINIT_MEM		= MEM_UNINIT | MEM_WRITE | ARG_PTR_TO_MEM,
+	/* Fix kabi by removing and inserting enum as bpf_arg_type is used only in kernel */
+	KABI_BROKEN_REMOVE_ENUM(ARG_PTR_TO_UNINIT_MEM = MEM_UNINIT | ARG_PTR_TO_MEM)
+	KABI_BROKEN_INSERT_ENUM(ARG_PTR_TO_UNINIT_MEM = MEM_UNINIT | MEM_WRITE | ARG_PTR_TO_MEM)
 	/* Pointer to valid memory of size known at compile time. */
 	ARG_PTR_TO_FIXED_SIZE_MEM	= MEM_FIXED_SIZE | ARG_PTR_TO_MEM,
 
