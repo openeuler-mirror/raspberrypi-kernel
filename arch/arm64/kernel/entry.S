@@ -660,7 +660,7 @@ SYM_CODE_END(__bad_stack)
 #endif
 
 #ifdef CONFIG_FAST_IRQ
-.macro check_xint_pre_kernel_entry el:req, ht:req
+.macro check_xint_pre_kernel_entry
 	stp	x0, x1, [sp, #0]
 	stp	x2, x3, [sp, #16]
 
@@ -691,20 +691,16 @@ SYM_CODE_END(__bad_stack)
 	ldp	x0, x1, [sp, #0]
 	ldp	x2, x3, [sp, #16]
 #ifdef CONFIG_SECURITY_FEATURE_BYPASS
-	kernel_entry \el, 64, xint
+	kernel_entry 0, 64, xint
 #else
-	kernel_entry \el, 64
+	kernel_entry 0, 64
 #endif
 	mov	x0, sp
-	bl	el\el\ht\()_64_xint_handler
+	bl	el0t_64_xint_handler
 #ifdef CONFIG_SECURITY_FEATURE_BYPASS
-	kernel_exit \el, xint
+	kernel_exit 0, xint
 #else
-	.if	\el == 0
 	b	ret_to_user
-	.else
-	b	ret_to_kernel
-	.endif
 #endif
 
 .Lskip_xint\@:
@@ -726,11 +722,11 @@ SYM_CODE_START_LOCAL(el\el\ht\()_\regsize\()_\label)
 	.endif
 #endif
 #ifdef CONFIG_FAST_IRQ
-	.if \regsize == 64 && \label == irq && (( \el == 0 && \ht == t) || (\el == 1 && \ht == h))
+	.if \regsize == 64 && \label == irq && \el == 0 && \ht == t
 	alternative_if_not ARM64_HAS_XINT
 		b .Lskip_check_xint\@
 	alternative_else_nop_endif
-		check_xint_pre_kernel_entry \el, \ht
+		check_xint_pre_kernel_entry
 .Lskip_check_xint\@:
 	.endif
 #endif
