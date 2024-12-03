@@ -3155,6 +3155,9 @@ static int _ext4_show_options(struct seq_file *seq, struct super_block *sb,
 		SEQ_OPTS_PUTS("mb_optimize_scan=1");
 	}
 
+	if (nodefs && !test_opt(sb, NO_PREFETCH_BLOCK_BITMAPS))
+		SEQ_OPTS_PUTS("prefetch_block_bitmaps");
+
 	ext4_show_quota_options(seq, sb);
 	return 0;
 }
