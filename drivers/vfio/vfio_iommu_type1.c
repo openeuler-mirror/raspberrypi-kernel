@@ -2702,14 +2702,6 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 	if (ret)
 		goto out_domain;
 
-#ifdef CONFIG_HISI_VIRTCCA_CODA
-	if (is_virtcca_cvm_enable() && iommu->secure) {
-		ret = virtcca_attach_secure_dev(domain->domain, group->iommu_group);
-		if (ret)
-			goto out_domain;
-	}
-#endif
-
 	/* Get aperture info */
 	geo = &domain->domain->geometry;
 	if (vfio_iommu_aper_conflict(iommu, geo->aperture_start,
@@ -2782,6 +2774,12 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 			iommu_detach_group(domain->domain, group->iommu_group);
 			if (!iommu_attach_group(d->domain,
 						group->iommu_group)) {
+#ifdef CONFIG_HISI_VIRTCCA_CODA
+				ret = virtcca_attach_secure_dev(d->domain,
+					group->iommu_group, iommu->secure);
+				if (ret)
+					goto out_domain;
+#endif
 				list_add(&group->next, &d->group_list);
 				vfio_iommu_update_hwdbm(iommu, d, true);
 				iommu_domain_free(domain->domain);
@@ -2795,6 +2793,12 @@ static int vfio_iommu_type1_attach_group(void *iommu_data,
 				goto out_domain;
 		}
 	}
+
+#ifdef CONFIG_HISI_VIRTCCA_CODA
+	ret = virtcca_attach_secure_dev(domain->domain, group->iommu_group, iommu->secure);
+	if (ret)
+		goto out_domain;
+#endif
 
 	vfio_test_domain_fgsp(domain, &iova_copy);
 

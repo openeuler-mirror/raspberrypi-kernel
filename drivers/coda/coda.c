@@ -292,7 +292,8 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 				if (j < i)
 					continue;
 				ret = tmi_dev_attach(sid, virtcca_cvm->rd,
-					arm_smmu_domain->smmu->s_smmu_id);
+					arm_smmu_domain->smmu->s_smmu_id,
+					arm_smmu_domain->s2_cfg.vmid);
 				if (ret) {
 					dev_err(arm_smmu_domain->smmu->dev, "CoDA: dev protected failed!\n");
 					ret = -ENXIO;
@@ -536,6 +537,7 @@ EXPORT_SYMBOL_GPL(virtcca_secure_dev_operator);
  * group to confidential virtual machine
  * @domain: The handle of iommu domain
  * @group: Iommu group
+ * @iommu_secure : Whether the iommu is secure or not
  *
  * Returns:
  * %0 if attach the all devices success
@@ -543,9 +545,16 @@ EXPORT_SYMBOL_GPL(virtcca_secure_dev_operator);
  * %-ENOMEM if the device create secure ste failed
  * %-ENOENT if the device does not have fwspec
  */
-int virtcca_attach_secure_dev(struct iommu_domain *domain, struct iommu_group *group)
+int virtcca_attach_secure_dev(struct iommu_domain *domain, struct iommu_group *group,
+	bool iommu_secure)
 {
-	int ret;
+	int ret = 0;
+
+	if (!is_virtcca_cvm_enable())
+		return ret;
+
+	if (!iommu_secure)
+		return ret;
 
 	ret = iommu_group_for_each_dev(group, (void *)domain, virtcca_secure_dev_operator);
 
