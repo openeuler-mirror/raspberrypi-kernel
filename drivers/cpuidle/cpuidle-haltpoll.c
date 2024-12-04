@@ -15,12 +15,18 @@
 #include <linux/cpuidle.h>
 #include <linux/module.h>
 #include <linux/sched/idle.h>
-#include <linux/kvm_para.h>
 #include <linux/cpuidle_haltpoll.h>
 
-static bool force __read_mostly;
-module_param(force, bool, 0444);
+static bool force;
 MODULE_PARM_DESC(force, "Load unconditionally");
+static int enable_haltpoll_driver(const char *val, const struct kernel_param *kp);
+
+static const struct kernel_param_ops enable_haltpoll_ops = {
+	.set = enable_haltpoll_driver,
+	.get = param_get_bool,
+};
+module_param_cb(force, &enable_haltpoll_ops, &force, 0644);
+
 
 static struct cpuidle_device __percpu *haltpoll_cpuidle_devices;
 static enum cpuhp_state haltpoll_hp_state;
@@ -93,21 +99,12 @@ static void haltpoll_uninit(void)
 	haltpoll_cpuidle_devices = NULL;
 }
 
-static bool haltpoll_want(void)
-{
-	return kvm_para_has_hint(KVM_HINTS_REALTIME) || force;
-}
-
 static int __init haltpoll_init(void)
 {
 	int ret;
 	struct cpuidle_driver *drv = &haltpoll_driver;
 
-	/* Do not load haltpoll if idle= is passed */
-	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
-		return -ENODEV;
-
-	if (!kvm_para_available() || !haltpoll_want())
+	if (!arch_haltpoll_want(force))
 		return -ENODEV;
 
 	cpuidle_poll_state_init(drv);
@@ -138,6 +135,90 @@ static void __exit haltpoll_exit(void)
 {
 	haltpoll_uninit();
 }
+
+#ifdef CONFIG_ARM64
+static int register_haltpoll_driver(void)
+{
+	int ret;
+	struct cpuidle_driver *drv = &haltpoll_driver;
+
+#ifdef CONFIG_X86
+	/* Do not load haltpoll if idle= is passed */
+	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
+		return -ENODEV;
+#endif
+
+	cpuidle_poll_state_init(drv);
+
+	ret = cpuidle_register_driver(drv);
+	if (ret < 0)
+		return ret;
+
+	haltpoll_cpuidle_devices = alloc_percpu(struct cpuidle_device);
+	if (haltpoll_cpuidle_devices == NULL) {
+		cpuidle_unregister_driver(drv);
+		return -ENOMEM;
+	}
+
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "cpuidle/haltpoll:online",
+			haltpoll_cpu_online, haltpoll_cpu_offline);
+	if (ret < 0) {
+		haltpoll_uninit();
+	} else {
+		haltpoll_hp_state = ret;
+		ret = 0;
+	}
+
+	return ret;
+}
+
+static void unregister_haltpoll_driver(void)
+{
+	if (haltpoll_hp_state)
+		cpuhp_remove_state(haltpoll_hp_state);
+	cpuidle_unregister_driver(&haltpoll_driver);
+
+	free_percpu(haltpoll_cpuidle_devices);
+	haltpoll_cpuidle_devices = NULL;
+
+}
+
+static int enable_haltpoll_driver(const char *val, const struct kernel_param *kp)
+{
+	int ret;
+	bool do_enable;
+
+	if (!val)
+		return 0;
+
+	ret = strtobool(val, &do_enable);
+
+	if (ret || force == do_enable)
+		return ret;
+
+	if (do_enable) {
+		ret = register_haltpoll_driver();
+
+		if (!ret) {
+			pr_info("Enable haltpoll driver.\n");
+			force = 1;
+		} else {
+			pr_err("Fail to enable haltpoll driver.\n");
+		}
+	} else {
+		unregister_haltpoll_driver();
+		force = 0;
+		pr_info("Unregister haltpoll driver.\n");
+	}
+
+	return ret;
+}
+#else
+static int enable_haltpoll_driver(const char *val, const struct kernel_param *kp)
+{
+	return -1;
+}
+#endif
 
 module_init(haltpoll_init);
 module_exit(haltpoll_exit);

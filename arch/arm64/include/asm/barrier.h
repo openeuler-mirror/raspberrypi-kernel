@@ -12,6 +12,7 @@
 #include <linux/kasan-checks.h>
 
 #include <asm/alternative-macros.h>
+#include <asm/delay-const.h>
 
 #define __nops(n)	".rept	" #n "\nnop\n.endr\n"
 #define nops(n)		asm volatile(__nops(n))
@@ -198,7 +199,7 @@ do {									\
 		VAL = READ_ONCE(*__PTR);				\
 		if (cond_expr)						\
 			break;						\
-		__cmpwait_relaxed(__PTR, VAL);				\
+		__cmpwait_relaxed(__PTR, VAL, ~0UL);			\
 	}								\
 	(typeof(*ptr))VAL;						\
 })
@@ -211,10 +212,67 @@ do {									\
 		VAL = smp_load_acquire(__PTR);				\
 		if (cond_expr)						\
 			break;						\
-		__cmpwait_relaxed(__PTR, VAL);				\
+		__cmpwait_relaxed(__PTR, VAL, ~0UL);			\
 	}								\
 	(typeof(*ptr))VAL;						\
 })
+
+#define __smp_cond_load_timeout_spin(ptr, cond_expr,			\
+				     time_expr_ns, time_limit_ns)	\
+({									\
+	typeof(ptr) __PTR = (ptr);					\
+	__unqual_scalar_typeof(*ptr) VAL;				\
+	unsigned int __count = 0;					\
+	for (;;) {							\
+		VAL = READ_ONCE(*__PTR);				\
+		if (cond_expr)						\
+			break;						\
+		cpu_relax();						\
+		if (__count++ < smp_cond_time_check_count)		\
+			continue;					\
+		if ((time_expr_ns) >= time_limit_ns)			\
+			break;						\
+		__count = 0;						\
+	}								\
+	(typeof(*ptr))VAL;						\
+})
+
+#define __smp_cond_load_timeout_wait(ptr, cond_expr,			\
+				     time_expr_ns, time_limit_ns)	\
+({									\
+	typeof(ptr) __PTR = (ptr);					\
+	__unqual_scalar_typeof(*ptr) VAL;				\
+	const unsigned long __time_limit_cycles =			\
+					NSECS_TO_CYCLES(time_limit_ns);	\
+	for (;;) {							\
+		VAL = READ_ONCE(*__PTR);				\
+		if (cond_expr)						\
+			break;						\
+		__cmpwait_relaxed(__PTR, VAL, __time_limit_cycles);	\
+		if ((time_expr_ns) >= time_limit_ns)			\
+			break;						\
+	}								\
+	(typeof(*ptr))VAL;						\
+})
+
+#define smp_cond_load_relaxed_timeout(ptr, cond_expr,			\
+				      time_expr_ns, time_limit_ns)	\
+({									\
+	__unqual_scalar_typeof(*ptr) _val;				\
+									\
+	int __wfe = arch_timer_evtstrm_available() ||			\
+		    alternative_has_cap_unlikely(ARM64_HAS_WFXT);	\
+	if (likely(__wfe))						\
+		_val = __smp_cond_load_timeout_wait(ptr, cond_expr,	\
+						   time_expr_ns,	\
+						   time_limit_ns);	\
+	else								\
+		_val = __smp_cond_load_timeout_spin(ptr, cond_expr,	\
+						   time_expr_ns,	\
+						   time_limit_ns);	\
+	(typeof(*ptr))_val;						\
+})
+
 
 #include <asm-generic/barrier.h>
 
