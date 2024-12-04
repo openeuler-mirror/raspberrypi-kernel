@@ -1580,7 +1580,7 @@ config SERIAL_NUVOTON_MA35D1_CONSOLE
 
 config SERIAL_RPI_FW
 	tristate "Raspberry Pi Firmware software UART support"
-	depends on ARM_AMBA || COMPILE_TEST
+	depends on RASPBERRYPI_FIRMWARE || COMPILE_TEST
 	select SERIAL_CORE
 	help
 	  This selects the Raspberry Pi firmware UART. This is a bit-bashed
