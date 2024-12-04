@@ -608,25 +608,14 @@ EXPORT_SYMBOL_GPL(virtcca_smmu_map_init);
  * arm_s_smmu_device_enable - Enable the smmu secure state
  * @smmu: An SMMUv3 instance
  * @enables: The smmu attribute need to enable
- * @bypass: Bypass smmu
- * @disable_bypass: Global bypass smmu
  */
 static void arm_s_smmu_device_enable(struct arm_smmu_device *smmu,
-	u32 enables, bool bypass, bool disable_bypass)
+	u32 enables)
 {
 	int ret = 0;
 
-	/* Enable the SMMU interface, or ensure bypass */
-	if (!bypass || disable_bypass) {
-		enables |= CR0_SMMUEN;
-	} else {
-		ret = virtcca_smmu_update_gbpa(smmu, 0, S_GBPA_ABORT);
-		if (ret) {
-			dev_err(smmu->dev, "S_SMMU: failed to update s gbpa!\n");
-			smmu->s_smmu_id = ARM_S_SMMU_INVALID_ID;
-			return;
-		}
-	}
+	/* Enable the SMMU interface */
+	enables |= CR0_SMMUEN;
 	/* Mask BIT1 and BIT4 which are RES0 in SMMU_S_CRO */
 	ret = virtcca_smmu_write_reg_sync(smmu, enables & ~SMMU_S_CR0_RESERVED,
 		enables & ~SMMU_S_CR0_RESERVED, ARM_SMMU_S_CR0, ARM_SMMU_S_CR0ACK);
@@ -680,10 +669,9 @@ static bool arm_s_smmu_idr1_support_secure(struct arm_smmu_device *smmu)
  * @smmu: An SMMUv3 instance
  * @ioaddr: SMMU address
  * @resume: Resume or not
- * @disable_bypass: Global disable smmu bypass
  */
 void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_device *smmu,
-	resource_size_t ioaddr, bool resume, bool disable_bypass)
+	resource_size_t ioaddr, bool resume)
 {
 	u64 rv;
 	int ret, irq;
@@ -782,8 +770,7 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	params_ptr->is_cmd_queue = 1;
 	params_ptr->smmu_id = smmu->s_smmu_id;
 	params_ptr->ioaddr = smmu->ioaddr;
-	params_ptr->strtab_base_RA_bit =
-		(smmu->strtab_cfg.strtab_base >> S_STRTAB_BASE_RA_SHIFT) & 0x1;
+	params_ptr->strtab_base_RA_bit = 0x1;
 	params_ptr->q_base_RA_WA_bit =
 		(smmu->cmdq.q.q_base >> S_CMDQ_BASE_RA_SHIFT) & 0x1;
 	if (tmi_smmu_device_reset(__pa(params_ptr)) != 0) {
@@ -813,8 +800,7 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	params_ptr->smmu_id = smmu->s_smmu_id;
 	params_ptr->q_base_RA_WA_bit =
 		 (smmu->evtq.q.q_base >> S_EVTQ_BASE_WA_SHIFT) & 0x1;
-	params_ptr->strtab_base_RA_bit =
-		(smmu->strtab_cfg.strtab_base >> S_STRTAB_BASE_RA_SHIFT) & 0x1;
+	params_ptr->strtab_base_RA_bit = 0x1;
 	if (tmi_smmu_device_reset(__pa(params_ptr)) != 0) {
 		dev_err(smmu->dev, "S_SMMU: failed to set s event queue regs\n");
 		smmu->s_smmu_id = ARM_S_SMMU_INVALID_ID;
@@ -843,6 +829,6 @@ void virtcca_smmu_device_init(struct platform_device *pdev, struct arm_smmu_devi
 	/* Enable the secure irqs */
 	virtcca_smmu_setup_irqs(smmu, resume);
 
-	/* Enable the secure smmu interface, or ensure bypass */
-	arm_s_smmu_device_enable(smmu, enables, smmu->bypass, disable_bypass);
+	/* Enable the secure smmu interface */
+	arm_s_smmu_device_enable(smmu, enables);
 }

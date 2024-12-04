@@ -461,10 +461,12 @@ struct kvm *virtcca_arm_smmu_get_kvm(struct arm_smmu_domain *domain)
 	struct iommu_group *iommu_group;
 	unsigned long flags;
 	struct arm_smmu_master *master;
+	struct arm_smmu_master_domain *master_domain;
 
 	spin_lock_irqsave(&domain->devices_lock, flags);
 	/* Get smmu master from smmu domain */
-	list_for_each_entry(master, &domain->devices, domain_head) {
+	list_for_each_entry(master_domain, &domain->devices, devices_elm) {
+		master = master_domain->master;
 		if (master && master->num_streams >= 0) {
 			ret = 0;
 			break;

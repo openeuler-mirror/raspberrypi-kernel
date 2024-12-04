@@ -268,6 +268,7 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 	unsigned long flags;
 	int i, j;
 	struct arm_smmu_master *master;
+	struct arm_smmu_master_domain *master_domain;
 	int ret = 0;
 	u64 cmd[CMDQ_ENT_DWORDS] = {0};
 	struct virtcca_cvm *virtcca_cvm = kvm->arch.virtcca_cvm;
@@ -277,7 +278,8 @@ u32 virtcca_tmi_dev_attach(struct arm_smmu_domain *arm_smmu_domain, struct kvm *
 	 * Traverse all devices under the secure smmu domain and
 	 * set the correspnding address translation table for each device
 	 */
-	list_for_each_entry(master, &arm_smmu_domain->devices, domain_head) {
+	list_for_each_entry(master_domain, &arm_smmu_domain->devices, devices_elm) {
+		master = master_domain->master;
 		if (master && master->num_streams >= 0) {
 			for (i = 0; i < master->num_streams; i++) {
 				u32 sid = master->streams[i].id;
@@ -327,6 +329,8 @@ static int virtcca_secure_dev_ste_create(struct arm_smmu_device *smmu,
 	struct arm_smmu_master *master, u32 sid)
 {
 	struct tmi_smmu_ste_params *params_ptr;
+	struct iommu_domain *domain;
+	struct arm_smmu_domain *smmu_domain;
 
 	params_ptr = kzalloc(sizeof(*params_ptr), GFP_KERNEL);
 	if (!params_ptr)
@@ -335,7 +339,9 @@ static int virtcca_secure_dev_ste_create(struct arm_smmu_device *smmu,
 	/* Sync Level 2 STE to TMM */
 	params_ptr->sid = sid;
 	params_ptr->smmu_id = smmu->s_smmu_id;
-	params_ptr->smmu_vmid = master->domain->s2_cfg.vmid;
+	domain = iommu_get_domain_for_dev(master->dev);
+	smmu_domain = to_smmu_domain(domain);
+	params_ptr->smmu_vmid = smmu_domain->s2_cfg.vmid;
 
 	if (tmi_smmu_ste_create(__pa(params_ptr)) != 0) {
 		kfree(params_ptr);
