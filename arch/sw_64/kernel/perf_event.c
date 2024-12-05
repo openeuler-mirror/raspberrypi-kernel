@@ -378,7 +378,7 @@ static void sw64_pmu_start(struct perf_event *event, int flags)
 
 	/* counting in selected modes, for both counters */
 	wrperfmon(PMC_CMD_PM, hwc->config_base);
-	wrperfmon(PMC_CMD_EVENT_BASE + hwc->idx, hwc->event_base);
+	wrperfmon(PMC_CMD_EVENT_BASE + hwc->idx, hwc->config);
 	wrperfmon(PMC_CMD_ENABLE, PMC_ENABLE_BASE + hwc->idx);
 }
 
@@ -474,49 +474,10 @@ static void hw_perf_event_destroy(struct perf_event *event)
 	/* Nothing to be done! */
 }
 
-static int __hw_perf_event_init(struct perf_event *event)
+static void __hw_perf_event_init(struct perf_event *event)
 {
 	struct perf_event_attr *attr = &event->attr;
 	struct hw_perf_event *hwc = &event->hw;
-	const struct sw64_perf_event *event_type;
-
-
-	/*
-	 * SW64 does not have per-counter usr/os/guest/host bits,
-	 * we can distinguish exclude_user and exclude_kernel by
-	 * sample mode.
-	 */
-	if (event->attr.exclude_hv || event->attr.exclude_idle ||
-			event->attr.exclude_host || event->attr.exclude_guest)
-		return -EINVAL;
-
-	/*
-	 * SW64 does not support precise ip feature, and system hang when
-	 * detecting precise_ip by perf_event_attr__set_max_precise_ip
-	 * in userspace
-	 */
-	if (attr->precise_ip != 0)
-		return -EOPNOTSUPP;
-
-	/* SW64 has fixed counter for given event type */
-	if (attr->type == PERF_TYPE_HARDWARE) {
-		if (attr->config >= sw64_pmu->max_events)
-			return -EINVAL;
-		event_type = sw64_pmu->map_hw_event(attr->config);
-		hwc->idx = event_type->counter;
-		hwc->event_base = event_type->event;
-	} else if (attr->type == PERF_TYPE_HW_CACHE) {
-		event_type = sw64_pmu->map_cache_event(attr->config);
-		if (IS_ERR(event_type))	/* */
-			return PTR_ERR(event_type);
-		hwc->idx = event_type->counter;
-		hwc->event_base = event_type->event;
-	} else { /* PERF_TYPE_RAW */
-		if (!sw64_pmu->raw_event_valid(attr->config))
-			return -EINVAL;
-		hwc->idx = attr->config >> 8;	/* counter selector */
-		hwc->event_base = attr->config & 0xff;	/* event selector */
-	}
 
 	hwc->config_base = SW64_PERFCTRL_AM;
 
@@ -524,8 +485,6 @@ static int __hw_perf_event_init(struct perf_event *event)
 		hwc->config_base = SW64_PERFCTRL_KM;
 	if (attr->exclude_kernel)
 		hwc->config_base = SW64_PERFCTRL_UM;
-
-	hwc->config = attr->config;
 
 	if (!is_sampling_event(event))
 		pr_debug("not sampling event\n");
@@ -537,8 +496,6 @@ static int __hw_perf_event_init(struct perf_event *event)
 		hwc->last_period = hwc->sample_period;
 		local64_set(&hwc->period_left, hwc->sample_period);
 	}
-
-	return 0;
 }
 
 /*
@@ -546,28 +503,66 @@ static int __hw_perf_event_init(struct perf_event *event)
  */
 static int sw64_pmu_event_init(struct perf_event *event)
 {
-	int err;
+	struct perf_event_attr *attr = &event->attr;
+	struct hw_perf_event *hwc = &event->hw;
+	const struct sw64_perf_event *event_type;
+
+	if (!sw64_pmu)
+		return -ENODEV;
 
 	/* does not support taken branch sampling */
 	if (has_branch_stack(event))
 		return -EOPNOTSUPP;
 
-	switch (event->attr.type) {
-	case PERF_TYPE_RAW:
+	/*
+	 * SW64 does not have per-counter usr/os/guest/host bits,
+	 * we can distinguish exclude_user and exclude_kernel by
+	 * sample mode.
+	 */
+	if (attr->exclude_hv || attr->exclude_idle ||
+			attr->exclude_host || attr->exclude_guest)
+		return -EINVAL;
+
+	if (attr->exclude_user && attr->exclude_kernel)
+		return -EOPNOTSUPP;
+	/*
+	 * SW64 does not support precise ip feature, and system hang when
+	 * detecting precise_ip by perf_event_attr__set_max_precise_ip
+	 * in userspace
+	 */
+	if (attr->precise_ip != 0)
+		return -EOPNOTSUPP;
+
+	/* SW64 has fixed counter for given event type */
+	switch (attr->type) {
 	case PERF_TYPE_HARDWARE:
+		if (attr->config >= sw64_pmu->max_events)
+			return -EINVAL;
+		event_type = sw64_pmu->map_hw_event(attr->config);
+		hwc->idx = event_type->counter;
+		hwc->config = event_type->event;
+		break;
 	case PERF_TYPE_HW_CACHE:
+		event_type = sw64_pmu->map_cache_event(attr->config);
+		if (IS_ERR(event_type))
+			return PTR_ERR(event_type);
+		hwc->idx = event_type->counter;
+		hwc->config = event_type->event;
+		break;
+	case PERF_TYPE_RAW:
+		if (!sw64_pmu->raw_event_valid(attr->config))
+			return -EINVAL;
+		hwc->idx = attr->config >> 8;	/* counter selector */
+		hwc->config = attr->config & 0xff;	/* event selector */
 		break;
 	default:
 		return -ENOENT;
 	}
 
-	if (!sw64_pmu)
-		return -ENODEV;
-
 	/* Do the real initialisation work. */
-	err = __hw_perf_event_init(event);
+	__hw_perf_event_init(event);
 
-	return err;
+	return 0;
 }
 
 static struct pmu pmu = {
@@ -730,6 +725,38 @@ void perf_callchain_kernel(struct perf_callchain_entry_ctx *entry,
 }
 
 /*
+ * Init call to initialise performance events at kernel startup.
+ */
+int __init init_hw_perf_events(void)
+{
+	pr_info("Performance Events: ");
+
+	if (!supported_cpu()) {
+		pr_cont("Unsupported CPU type!\n");
+		return 0;
+	}
+
+	if (is_in_guest()) {
+		pr_cont("No PMU driver, software events only.\n");
+		return 0;
+	}
+
+	pr_cont("Supported CPU type!\n");
+
+	/* Override performance counter IRQ vector */
+
+	perf_irq = sw64_perf_event_irq_handler;
+
+	/* And set up PMU specification */
+	sw64_pmu = &core3_pmu;
+
+	perf_pmu_register(&pmu, "cpu", PERF_TYPE_RAW);
+
+	return 0;
+}
+early_initcall(init_hw_perf_events);
+
+/*
  * Gets the perf_instruction_pointer and perf_misc_flags for guest os.
  */
 
@@ -760,28 +787,3 @@ unsigned long perf_misc_flags(struct pt_regs *regs)
 
 	return misc;
 }
-
-/*
- * Init call to initialise performance events at kernel startup.
- */
-int __init init_hw_perf_events(void)
-{
-	if (!supported_cpu()) {
-		pr_info("Performance events: Unsupported CPU type!\n");
-		return 0;
-	}
-
-	pr_info("Performance events: Supported CPU type!\n");
-
-	/* Override performance counter IRQ vector */
-
-	perf_irq = sw64_perf_event_irq_handler;
-
-	/* And set up PMU specification */
-	sw64_pmu = &core3_pmu;
-
-	perf_pmu_register(&pmu, "cpu", PERF_TYPE_RAW);
-
-	return 0;
-}
-early_initcall(init_hw_perf_events);

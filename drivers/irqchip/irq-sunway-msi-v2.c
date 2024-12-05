@@ -3,9 +3,12 @@
 #include <linux/msi.h>
 #include <linux/irqdomain.h>
 #include <linux/smp.h>
+#include <linux/acpi.h>
 
 #include <asm/irq_impl.h>
 #include <asm/kvm_emulate.h>
+
+#define PREFIX "MSIC: "
 
 static struct irq_domain *msi_default_domain;
 static DEFINE_RAW_SPINLOCK(vector_lock);
@@ -90,7 +93,7 @@ static bool find_free_cpu_vectors(const struct cpumask *search_mask, int *found_
 
 	cpu = cpumask_first(search_mask);
 try_again:
-	for (vector = 0; vector < 256; vector++) {
+	for (vector = 0; vector < 256; vector += nr_irqs) {
 		for (i = 0; i < nr_irqs; i++)
 			if (per_cpu(vector_irq, cpu)[vector + i])
 				break;
@@ -101,8 +104,6 @@ try_again:
 			*found_vector = vector;
 			return found;
 		}
-
-		vector += i;
 	}
 
 	cpu = cpumask_next(cpu, search_mask);
@@ -211,7 +212,6 @@ static int __assign_irq_vector(int virq, unsigned int nr_irqs,
 	struct sw64_msi_chip_data *cdata;
 	int node;
 	int i, vector, cpu;
-	unsigned long msiaddr;
 
 	if (unlikely((nr_irqs > 1) && (!is_power_of_2(nr_irqs))))
 		nr_irqs = __roundup_pow_of_two(nr_irqs);
@@ -307,10 +307,9 @@ static int assign_irq_vector(int irq, unsigned int nr_irqs,
 static void sw64_vector_free_irqs(struct irq_domain *domain,
 		unsigned int virq, unsigned int nr_irqs)
 {
-	int i, j;
+	int i;
 	struct irq_data *irq_data;
 	unsigned long flags;
-	unsigned int multi_msi;
 
 	for (i = 0; i < nr_irqs; i++) {
 		irq_data = irq_domain_get_irq_data(domain, virq + i);
@@ -320,13 +319,15 @@ static void sw64_vector_free_irqs(struct irq_domain *domain,
 			raw_spin_lock_irqsave(&vector_lock, flags);
 			cdata = irq_data->chip_data;
 			irq_domain_reset_irq_data(irq_data);
-			multi_msi = cdata->multi_msi;
-			for (j = 0; j < multi_msi; j++)
-				per_cpu(vector_irq, cdata->dst_cpu)[cdata->vector + j] = 0;
-			kfree(cdata);
+			cdata->multi_msi--;
+			per_cpu(vector_irq, cdata->dst_cpu)[cdata->vector] = 0;
+
+			if (cdata->multi_msi)
+				cdata->vector++;
+
+			if (cdata->multi_msi == 0)
+				kfree(cdata);
 			raw_spin_unlock_irqrestore(&vector_lock, flags);
-			if (multi_msi > 1)
-				break;
 		}
 	}
 }
@@ -510,3 +511,35 @@ void handle_pci_msi_interrupt(unsigned long type, unsigned long vector, unsigned
 		vector = int_pci_msi[i % 3];
 	}
 }
+
+MODULE_LICENSE("GPL v2");
+
+#ifdef CONFIG_ACPI
+#define SW_MSIC_FLAG_ENABLED ACPI_MADT_ENABLED /* 0x1 */
+#define SW_MSIC_FLAG_VIRTUAL 0x2               /* virtual MSIC */
+
+#define is_msic_enabled(flags) ((flags) & SW_MSIC_FLAG_ENABLED)
+#define is_msic_virtual(flags) ((flags) & SW_MSIC_FLAG_VIRTUAL)
+
+int __init msic_acpi_init(struct irq_domain *parent,
+		struct acpi_madt_sw_msic *msic)
+{
+	bool enabled, virtual;
+
+	enabled = is_msic_enabled(msic->flags);
+	virtual = is_msic_virtual(msic->flags);
+
+	pr_info(PREFIX "version [%u] on node [%u] Root Complex [%u] (%s) %s\n",
+			msic->version, msic->node, msic->rc,
+			virtual ? "virtual" : "physical",
+			enabled ? "found" : "disabled");
+
+	if (!enabled)
+		return 0;
+
+	if (!msi_default_domain)
+		arch_init_msi_domain(parent);
+
+	return 0;
+}
+#endif
