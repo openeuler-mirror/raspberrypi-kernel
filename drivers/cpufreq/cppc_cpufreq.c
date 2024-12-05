@@ -898,7 +898,7 @@ static ssize_t show_energy_perf(struct cpufreq_policy *policy, char *buf)
 	u64 val;
 	int ret;
 
-	ret = cppc_get_epp_perf(policy->cpu, &val);
+	ret = cppc_get_epp_caps(policy->cpu, &val);
 
 	/* show "<unsupported>" when this register is not supported by cpc */
 	if (ret == -EOPNOTSUPP)

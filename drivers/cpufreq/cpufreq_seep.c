@@ -52,7 +52,7 @@ static int cpufreq_gov_seep_start(struct cpufreq_policy *policy)
 	int ret;
 
 	/* Enable BIOS frequency Scaling */
-	ret = cppc_set_auto_sel(policy->cpu, 1);
+	ret = cppc_set_auto_sel_caps(policy->cpu, 1);
 	if (ret)
 		pr_err("Failed to enable auto_sel: %d\n", ret);
 	return ret;
@@ -67,7 +67,7 @@ static void cpufreq_gov_seep_stop(struct cpufreq_policy *policy)
 	int ret;
 
 	/* Disable BIOS frequency Scaling */
-	ret = cppc_set_auto_sel(policy->cpu, 0);
+	ret = cppc_set_auto_sel_caps(policy->cpu, 0);
 	if (ret)
 		pr_err("Failed to disable auto_sel: %d\n", ret);
 }
