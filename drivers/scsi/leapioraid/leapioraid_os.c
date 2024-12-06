@@ -505,7 +505,8 @@ leapioraid_scsihost_determine_boot_device(
 	}
 }
 
-static struct leapioraid_sas_device *__leapioraid_get_sdev_from_target(
+static
+struct leapioraid_sas_device *__leapioraid_get_sdev_from_target(
 	struct LEAPIORAID_ADAPTER *ioc,
 	struct LEAPIORAID_TARGET *tgt_priv)
 {
@@ -518,6 +519,7 @@ static struct leapioraid_sas_device *__leapioraid_get_sdev_from_target(
 	return ret;
 }
 
+static
 struct leapioraid_sas_device *leapioraid_get_sdev_from_target(
 	struct LEAPIORAID_ADAPTER *ioc,
 	struct LEAPIORAID_TARGET *tgt_priv)
@@ -531,6 +533,7 @@ struct leapioraid_sas_device *leapioraid_get_sdev_from_target(
 	return ret;
 }
 
+static
 struct leapioraid_sas_device *__leapioraid_get_sdev_by_addr(
 	struct LEAPIORAID_ADAPTER *ioc,
 	u64 sas_address, struct leapioraid_hba_port *port)
@@ -863,6 +866,7 @@ out:
 	return r;
 }
 
+static
 struct leapioraid_enclosure_node *leapioraid_scsihost_enclosure_find_by_handle(
 								     struct LEAPIORAID_ADAPTER *ioc,
 								     u16 handle)
@@ -1850,7 +1854,7 @@ leapioraid_scsihost_clear_tm_flag(
 	}
 }
 
-int
+static int
 leapioraid_scsihost_tm_cmd_map_status(
 	struct LEAPIORAID_ADAPTER *ioc, uint channel,
 	uint id, uint lun, u8 type, u16 smid_task)
@@ -1885,7 +1889,7 @@ leapioraid_scsihost_tm_cmd_map_status(
 	return FAILED;
 }
 
-int
+static int
 leapioraid_scsihost_tm_post_processing(struct LEAPIORAID_ADAPTER *ioc, u16 handle,
 			 uint channel, uint id, uint lun, u8 type,
 			 u16 smid_task)
@@ -3599,7 +3603,6 @@ leapioraid_scsihost_flush_running_cmds(
 	struct LEAPIORAID_ADAPTER *ioc)
 {
 	struct scsi_cmnd *scmd;
-	struct LeapioraidSCSIIOReq_t *mpi_request;
 	struct leapioraid_scsiio_tracker *st;
 	u16 smid;
 	u16 count = 0;
@@ -3613,7 +3616,7 @@ leapioraid_scsihost_flush_running_cmds(
 		if (st && st->smid == 0)
 			continue;
 		leapioraid_scsihost_set_satl_pending(scmd, false);
-		mpi_request = leapioraid_base_get_msg_frame(ioc, smid);
+		leapioraid_base_get_msg_frame(ioc, smid);
 		scsi_dma_unmap(scmd);
 
 		leapioraid_base_clear_st(ioc, st);
@@ -5290,7 +5293,6 @@ leapioraid_scsi_send_scsi_io(
 	struct LeapioraidSCSIIORep_t *mpi_reply;
 	struct LeapioSCSIIOReq_t *mpi_request;
 	u16 smid;
-	unsigned long timeleft;
 	u8 issue_reset = 0;
 	int rc;
 	void *priv_sense;
@@ -5394,7 +5396,7 @@ retry_loop:
 		ioc->put_smid_scsi_io(ioc, smid, handle);
 	else
 		ioc->put_smid_default(ioc, smid);
-	timeleft = wait_for_completion_timeout(&ioc->scsih_cmds.done,
+	wait_for_completion_timeout(&ioc->scsih_cmds.done,
 					       transfer_packet->timeout * HZ);
 	if (!(ioc->scsih_cmds.status & LEAPIORAID_CMD_COMPLETE)) {
 		leapioraid_check_cmd_timeout(ioc,
@@ -7167,6 +7169,7 @@ leapioraid_scsihost_reprobe_lun(
 	sdev_printk(KERN_INFO, sdev, "%s raid component\n",
 		    sdev->no_uld_attach ? "hiding" : "exposing");
 	rc = scsi_device_reprobe(sdev);
+	pr_info("%s rc=%d\n", __func__, rc);
 }
 
 static void
@@ -7724,7 +7727,6 @@ static void
 leapioraid_scsihost_update_device_qdepth(struct LEAPIORAID_ADAPTER *ioc)
 {
 	struct LEAPIORAID_DEVICE *sas_device_priv_data;
-	struct LEAPIORAID_TARGET *sas_target_priv_data;
 	struct leapioraid_sas_device *sas_device;
 	struct scsi_device *sdev;
 	u16 qdepth;
@@ -7734,7 +7736,6 @@ leapioraid_scsihost_update_device_qdepth(struct LEAPIORAID_ADAPTER *ioc)
 	shost_for_each_device(sdev, ioc->shost) {
 		sas_device_priv_data = sdev->hostdata;
 		if (sas_device_priv_data && sas_device_priv_data->sas_target) {
-			sas_target_priv_data = sas_device_priv_data->sas_target;
 			sas_device = sas_device_priv_data->sas_target->sas_dev;
 			if (sas_device &&
 			    sas_device->device_info & LEAPIORAID_SAS_DEVICE_INFO_SSP_TARGET)
@@ -9376,7 +9377,6 @@ leapioraid_scsihost_probe(
 	struct LEAPIORAID_ADAPTER *ioc;
 	struct Scsi_Host *shost = NULL;
 	int rv;
-	u8 revision;
 
 	shost = scsi_host_alloc(&leapioraid_driver_template,
 				sizeof(struct LEAPIORAID_ADAPTER));
@@ -9386,8 +9386,6 @@ leapioraid_scsihost_probe(
 	memset(ioc, 0, sizeof(struct LEAPIORAID_ADAPTER));
 	ioc->id = leapioraid_ids++;
 	sprintf(ioc->driver_name, "%s", LEAPIORAID_DRIVER_NAME);
-
-	revision = pdev->revision;
 
 	ioc->combined_reply_queue = 1;
 	ioc->nc_reply_index_count = 16;
@@ -9461,7 +9459,7 @@ leapioraid_scsihost_probe(
 
 	ioc->disable_eedp_support = 1;
 	snprintf(ioc->firmware_event_name, sizeof(ioc->firmware_event_name),
-		 "fw_event_%s%d", ioc->driver_name, ioc->id);
+		 "fw_event_%s%u", ioc->driver_name, ioc->id);
 	ioc->firmware_event_thread =
 	    alloc_ordered_workqueue(ioc->firmware_event_name, 0);
 	if (!ioc->firmware_event_thread) {

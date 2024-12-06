@@ -306,7 +306,7 @@ leapioraid_udp_init(void)
 	memset(&msg, 0, sizeof(msg));
 	msg.msg_name = &dest_addr;
 	msg.msg_namelen = sizeof(struct sockaddr_in);
-	return 0;
+	return ret;
 }
 
 static void
@@ -389,7 +389,7 @@ leapioraid_base_start_log_watchdog(struct LEAPIORAID_ADAPTER *ioc)
 	leapioraid_udp_init();
 	INIT_DELAYED_WORK(&ioc->pcie_log_work, leapioraid_base_pcie_log_work);
 	snprintf(ioc->pcie_log_work_q_name,
-		 sizeof(ioc->pcie_log_work_q_name), "poll_%s%d_status",
+		 sizeof(ioc->pcie_log_work_q_name), "poll_%s%u_status",
 		 ioc->driver_name, ioc->id);
 	ioc->pcie_log_work_q =
 	    create_singlethread_workqueue(ioc->pcie_log_work_q_name);
@@ -585,7 +585,7 @@ leapioraid_base_start_watchdog(struct LEAPIORAID_ADAPTER *ioc)
 	INIT_DELAYED_WORK(&ioc->fault_reset_work,
 		leapioraid_base_fault_reset_work);
 	snprintf(ioc->fault_reset_work_q_name,
-		 sizeof(ioc->fault_reset_work_q_name), "poll_%s%d_status",
+		 sizeof(ioc->fault_reset_work_q_name), "poll_%s%u_status",
 		 ioc->driver_name, ioc->id);
 	ioc->fault_reset_work_q =
 	    create_singlethread_workqueue(ioc->fault_reset_work_q_name);
@@ -634,7 +634,7 @@ leapioraid_base_start_hba_unplug_watchdog(struct LEAPIORAID_ADAPTER *ioc)
 		leapioraid_base_hba_hot_unplug_work);
 	snprintf(ioc->hba_hot_unplug_work_q_name,
 		 sizeof(ioc->hba_hot_unplug_work_q_name),
-		 "poll_%s%d_hba_unplug", ioc->driver_name, ioc->id);
+		 "poll_%s%u_hba_unplug", ioc->driver_name, ioc->id);
 	ioc->hba_hot_unplug_work_q =
 	    create_singlethread_workqueue(ioc->hba_hot_unplug_work_q_name);
 	if (!ioc->hba_hot_unplug_work_q) {
@@ -667,7 +667,7 @@ leapioraid_base_stop_hba_unplug_watchdog(struct LEAPIORAID_ADAPTER *ioc)
 	}
 }
 
-void
+static void
 leapioraid_base_stop_smart_polling(struct LEAPIORAID_ADAPTER *ioc)
 {
 	struct workqueue_struct *wq;
@@ -1296,7 +1296,7 @@ union leapioraid_reply_descriptor {
 	} u;
 };
 
-int
+static int
 leapioraid_base_process_reply_queue(
 	struct leapioraid_adapter_reply_queue *reply_q)
 {
@@ -1465,6 +1465,7 @@ leapioraid_base_interrupt(int irq, void *bus_id)
 		IRQ_HANDLED : IRQ_NONE);
 }
 
+static
 int leapioraid_base_irqpoll(struct irq_poll *irqpoll, int budget)
 {
 	struct leapioraid_adapter_reply_queue *reply_q;
@@ -1486,7 +1487,7 @@ int leapioraid_base_irqpoll(struct irq_poll *irqpoll, int budget)
 	return num_entries;
 }
 
-void
+static void
 leapioraid_base_init_irqpolls(struct LEAPIORAID_ADAPTER *ioc)
 {
 	struct leapioraid_adapter_reply_queue *reply_q, *next;
@@ -1717,7 +1718,7 @@ leapioraid_base_build_sg_scmd_ieee(struct LEAPIORAID_ADAPTER *ioc,
 	struct LeapioraidSCSIIOReq_t *mpi_request;
 	dma_addr_t chain_dma;
 	struct scatterlist *sg_scmd;
-	void *sg_local, *chain, *sgl_zero_addr;
+	void *sg_local, *chain;
 	u32 chain_offset;
 	u32 chain_length;
 	int sges_left;
@@ -1743,7 +1744,7 @@ leapioraid_base_build_sg_scmd_ieee(struct LEAPIORAID_ADAPTER *ioc,
 		     dev_name(&scmd->device->sdev_gendev), scsi_bufflen(scmd));
 		return -ENOMEM;
 	}
-	sgl_zero_addr = sg_local = &mpi_request->SGL;
+	sg_local = &mpi_request->SGL;
 	sges_in_segment = (ioc->request_sz -
 			   offsetof(struct LeapioraidSCSIIOReq_t,
 				    SGL)) / ioc->sge_size_ieee;
@@ -2015,7 +2016,7 @@ leapioraid_base_request_irq(struct LEAPIORAID_ADAPTER *ioc, u8 index)
 {
 	struct leapioraid_adapter_reply_queue *reply_q;
 	int r;
-	int qid;
+	u8 qid;
 
 	reply_q = kzalloc(sizeof(struct leapioraid_adapter_reply_queue),
 		GFP_KERNEL);
@@ -2027,7 +2028,7 @@ leapioraid_base_request_irq(struct LEAPIORAID_ADAPTER *ioc, u8 index)
 	atomic_set(&reply_q->busy, 0);
 	if (index >= ioc->iopoll_q_start_index) {
 		qid = index - ioc->iopoll_q_start_index;
-		snprintf(reply_q->name, LEAPIORAID_NAME_LENGTH, "%s%d-mq-poll%d",
+		snprintf(reply_q->name, LEAPIORAID_NAME_LENGTH, "%s%u-mq-poll%u",
 			 ioc->driver_name, ioc->id, qid);
 		reply_q->is_blk_mq_poll_q = 1;
 		ioc->blk_mq_poll_queues[qid].reply_q = reply_q;
@@ -2036,7 +2037,7 @@ leapioraid_base_request_irq(struct LEAPIORAID_ADAPTER *ioc, u8 index)
 		return 0;
 	}
 	if (ioc->msix_enable)
-		snprintf(reply_q->name, LEAPIORAID_NAME_LENGTH, "%s%d-msix%d",
+		snprintf(reply_q->name, LEAPIORAID_NAME_LENGTH, "%s%u-msix%u",
 			 ioc->driver_name, ioc->id, index);
 	else
 		snprintf(reply_q->name, LEAPIORAID_NAME_LENGTH, "%s%d",
@@ -3917,10 +3918,10 @@ base_alloc_rdpq_dma_pool(struct LEAPIORAID_ADAPTER *ioc, int sz)
 }
 
 static int
-leapioraid_base_allocate_chain_dma_pool(struct LEAPIORAID_ADAPTER *ioc, int sz,
-					struct leapioraid_chain_tracker *ctr)
+leapioraid_base_allocate_chain_dma_pool(struct LEAPIORAID_ADAPTER *ioc, int sz)
 {
 	int i = 0, j = 0;
+	struct leapioraid_chain_tracker *ctr;
 
 	ioc->chain_dma_pool = dma_pool_create("chain pool", &ioc->pdev->dev,
 					      ioc->chain_segment_sz, 16, 0);
@@ -4083,7 +4084,6 @@ leapioraid_base_allocate_memory_pools(struct LEAPIORAID_ADAPTER *ioc)
 	unsigned short sg_tablesize;
 	u16 sge_size;
 	int i = 0;
-	struct leapioraid_chain_tracker *ct;
 
 	dinitprintk(ioc, pr_info("%s %s\n", ioc->name,
 				__func__));
@@ -4303,8 +4303,7 @@ retry_allocation:
 		}
 	}
 	ioc->chains_per_prp_buffer = 0;
-	rc = leapioraid_base_allocate_chain_dma_pool(ioc, ioc->chain_segment_sz,
-						     ct);
+	rc = leapioraid_base_allocate_chain_dma_pool(ioc, ioc->chain_segment_sz);
 	if (rc == -ENOMEM)
 		return -ENOMEM;
 	else if (rc == -EAGAIN) {
@@ -4410,7 +4409,7 @@ out:
 	return rc;
 }
 
-void
+static void
 leapioraid_base_flush_ios_and_panic(
 	struct LEAPIORAID_ADAPTER *ioc, u16 fault_code)
 {
@@ -5720,7 +5719,6 @@ leapioraid_base_hard_reset_handler(
 {
 	int r;
 	unsigned long flags;
-	u32 ioc_state;
 
 	dtmprintk(ioc, pr_info("%s %s: enter\n", ioc->name,
 			      __func__));
@@ -5749,7 +5747,7 @@ leapioraid_base_hard_reset_handler(
 	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
 	ioc->shost_recovery = 1;
 	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
-	ioc_state = leapioraid_base_get_iocstate(ioc, 0);
+	leapioraid_base_get_iocstate(ioc, 0);
 	leapioraid_base_reset_handler(ioc, LEAPIORAID_IOC_PRE_RESET_PHASE);
 	leapioraid_wait_for_commands_to_complete(ioc);
 	leapioraid_base_mask_interrupts(ioc);
@@ -6060,6 +6058,7 @@ retry_config:
 					     mpi_request,
 					     sizeof(struct LeapioraidCfgReq_t) / 4,
 					     issue_reset);
+		pr_info("%s issue_reset=%d\n", __func__, issue_reset);
 		retry_count++;
 		if (ioc->config_cmds.smid == smid)
 			leapioraid_base_free_smid(ioc, smid);
