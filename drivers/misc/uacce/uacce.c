@@ -360,16 +360,13 @@ static void uacce_vma_close(struct vm_area_struct *vma)
 	struct uacce_queue *q = vma->vm_private_data;
 	struct uacce_qfile_region *qfr = NULL;
 	struct uacce_device *uacce = q->uacce;
-	struct device *dev = &q->uacce->dev;
 
 	if (vma->vm_pgoff >= UACCE_MAX_REGION)
 		return;
 
 	qfr = q->qfrs[vma->vm_pgoff];
-	if (!qfr) {
-		dev_err(dev, "qfr NULL, type %lu!\n", vma->vm_pgoff);
+	if (!qfr)
 		return;
-	}
 
 	if (qfr->type == UACCE_QFRT_SS &&
 	    atomic_read(&current->active_mm->mm_users) > 0) {
@@ -383,7 +380,8 @@ static void uacce_vma_close(struct vm_area_struct *vma)
 		uacce_free_dma_buffers(q);
 		q->qfrs[vma->vm_pgoff] = NULL;
 		mutex_unlock(&uacce->mutex);
-		kfree(qfr);
+		if (qfr != &noiommu_ss_default_qfr)
+			kfree(qfr);
 	} else if (qfr->type != UACCE_QFRT_SS) {
 		mutex_lock(&q->mutex);
 		q->qfrs[vma->vm_pgoff] = NULL;
