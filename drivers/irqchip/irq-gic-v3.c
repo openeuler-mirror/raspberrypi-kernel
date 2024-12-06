@@ -45,8 +45,8 @@
 #define FLAGS_WORKAROUND_CAVIUM_ERRATUM_38539	(1ULL << 1)
 #define FLAGS_WORKAROUND_MTK_GICR_SAVE		(1ULL << 2)
 #define FLAGS_WORKAROUND_ASR_ERRATUM_8601001	(1ULL << 3)
-#define FLAGS_WORKAROUND_HIP09_ERRATUM_162200803	(1ULL << 4)
-#define FLAGS_WORKAROUND_HIP09_ERRATUM_162200806	(1ULL << 5)
+#define FLAGS_WORKAROUND_HIP10_ERRATUM_162200803	(1ULL << 4)
+#define FLAGS_WORKAROUND_HIP10_ERRATUM_162200806	(1ULL << 5)
 
 #define GIC_IRQ_TYPE_PARTITION	(GIC_IRQ_TYPE_LPI + 1)
 
@@ -2116,20 +2116,20 @@ static bool rd_set_non_coherent(void *data)
 	return true;
 }
 
-static bool gic_enable_quirk_hip09_162200803(void *data)
+static bool gic_enable_quirk_hip10_10c_162200803(void *data)
 {
 	struct gic_chip_data *d = data;
 
-	d->flags |= FLAGS_WORKAROUND_HIP09_ERRATUM_162200803;
+	d->flags |= FLAGS_WORKAROUND_HIP10_ERRATUM_162200803;
 
 	return true;
 }
 
-static bool __maybe_unused gic_enable_quirk_hip09_162200806(void *data)
+static bool __maybe_unused gic_enable_quirk_hip10_162200806(void *data)
 {
 	struct gic_chip_data *d = data;
 
-	d->flags |= FLAGS_WORKAROUND_HIP09_ERRATUM_162200806;
+	d->flags |= FLAGS_WORKAROUND_HIP10_ERRATUM_162200806;
 
 	return true;
 }
@@ -2206,16 +2206,22 @@ static const struct gic_quirk gic_quirks[] = {
 		.init   = rd_set_non_coherent,
 	},
 	{
-		.desc	= "GICv3: HIP09 erratum 162200803",
+		.desc	= "GICv3: HIP10 erratum 162200803",
 		.iidr	= 0x01050736,
 		.mask	= 0xffffffff,
-		.init	= gic_enable_quirk_hip09_162200803,
+		.init	= gic_enable_quirk_hip10_10c_162200803,
 	},
 	{
-		.desc	= "GICv3: HIP09 erratum 162200806",
+		.desc	= "GICv3: HIP10C erratum 162200803",
+		.iidr	= 0x00061736,
+		.mask	= 0xffffffff,
+		.init	= gic_enable_quirk_hip10_10c_162200803,
+	},
+	{
+		.desc	= "GICv3: HIP10 erratum 162200806",
 		.iidr	= 0x01050736,
 		.mask	= 0xffffffff,
-		.init	= gic_enable_quirk_hip09_162200806,
+		.init	= gic_enable_quirk_hip10_162200806,
 	},
 	{
 	}
@@ -2528,8 +2534,10 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 	gic_v3_kvm_info.has_vtimer = gic_data.rdists.has_vtimer;
 #endif
-	if (gic_v3_kvm_info.has_v4)
-		gic_v3_kvm_info.flags = gic_data.flags;
+	if (gic_v3_kvm_info.has_v4 && !gic_v3_kvm_info.has_v4_1)
+		gic_v3_kvm_info.flags |= gic_data.flags & FLAGS_WORKAROUND_HIP10_ERRATUM_162200803;
+	if (gic_v3_kvm_info.has_v4_1)
+		gic_v3_kvm_info.flags |= gic_data.flags & FLAGS_WORKAROUND_HIP10_ERRATUM_162200806;
 	vgic_set_kvm_info(&gic_v3_kvm_info);
 }
 
@@ -2882,8 +2890,10 @@ static void __init gic_acpi_setup_kvm_info(void)
 #ifdef CONFIG_VIRT_VTIMER_IRQ_BYPASS
 	gic_v3_kvm_info.has_vtimer = gic_data.rdists.has_vtimer;
 #endif
-	if (gic_v3_kvm_info.has_v4)
-		gic_v3_kvm_info.flags = gic_data.flags;
+	if (gic_v3_kvm_info.has_v4 && !gic_v3_kvm_info.has_v4_1)
+		gic_v3_kvm_info.flags |= gic_data.flags & FLAGS_WORKAROUND_HIP10_ERRATUM_162200803;
+	if (gic_v3_kvm_info.has_v4_1)
+		gic_v3_kvm_info.flags |= gic_data.flags & FLAGS_WORKAROUND_HIP10_ERRATUM_162200806;
 	vgic_set_kvm_info(&gic_v3_kvm_info);
 }
 
