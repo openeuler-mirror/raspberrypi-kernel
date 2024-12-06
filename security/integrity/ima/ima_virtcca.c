@@ -38,20 +38,15 @@ int ima_virtcca_init(struct ima_rot *rot)
 	if (rc)
 		return rc;
 
-	if (virtcca_algo != ima_hash_algo) {
-		pr_info("VirtCCA's algo (%s) is different from ima_hash_algo (%s)\n",
-				hash_algo_name[virtcca_algo], hash_algo_name[ima_hash_algo]);
+	rot->allocated_banks = kcalloc(1, sizeof(*rot->allocated_banks), GFP_KERNEL);
+	if (!rot->allocated_banks)
+		return -ENOMEM;
 
-		rot->allocated_banks = kcalloc(1, sizeof(*rot->allocated_banks), GFP_KERNEL);
-		if (!rot->allocated_banks)
-			return -ENOMEM;
-
-		rot->nr_allocated_banks = 1;
-		rot->allocated_banks[0].alg_id = (virtcca_algo == HASH_ALGO_SHA512) ?
-						 TPM_ALG_SHA512 : TPM_ALG_SHA256;
-		rot->allocated_banks[0].digest_size = hash_digest_size[virtcca_algo];
-		rot->allocated_banks[0].crypto_id = virtcca_algo;
-	}
+	rot->nr_allocated_banks = 1;
+	rot->allocated_banks[0].alg_id = (virtcca_algo == HASH_ALGO_SHA512) ?
+					 TPM_ALG_SHA512 : TPM_ALG_SHA256;
+	rot->allocated_banks[0].digest_size = hash_digest_size[virtcca_algo];
+	rot->allocated_banks[0].crypto_id = virtcca_algo;
 
 	return 0;
 }
@@ -81,15 +76,16 @@ int ima_calc_virtcca_boot_aggregate(struct ima_digest_data *hash)
 int ima_virtcca_extend(struct tpm_digest *digests_arg, const void *args)
 {
 	struct virtcca_cvm_measurement_extend cme;
-	int algo_idx = (virtcca_algo != ima_hash_algo) ? 0 : ima_hash_algo_idx;
 
 	cme.index = CVM_IMA_SLOT_IDX;
 	cme.size = hash_digest_size[virtcca_algo];
 
-	if (digests_arg)
-		memcpy(cme.value, digests_arg[algo_idx].digest, cme.size);
-	else
-		memset(cme.value, 0xff, cme.size);
+	/*
+	 * virtcca has only one slot, so the algorithm of digests_arg[0] is always
+	 * virtcca_algo according to the init process of ima_init_crypto() and
+	 * ima_init_digets()
+	 */
+	memcpy(cme.value, digests_arg[0].digest, cme.size);
 
 	return tsi_measurement_extend(&cme) == TSI_SUCCESS ? 0 : -EFAULT;
 }
