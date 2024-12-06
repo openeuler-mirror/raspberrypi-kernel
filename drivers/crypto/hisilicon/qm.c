@@ -2786,6 +2786,7 @@ static int qm_alloc_uacce(struct hisi_qm *qm)
 	struct uacce_interface interface = {0};
 	struct pci_dev *pdev = qm->pdev;
 	struct uacce_device *uacce;
+	u32 flags;
 	int ret;
 
 	ret = strscpy(interface.name, dev_driver_string(&pdev->dev),
@@ -2804,11 +2805,18 @@ static int qm_alloc_uacce(struct hisi_qm *qm)
 	}
 
 	interface.ops = &uacce_qm_ops;
+	flags = interface.flags;
 	uacce = uacce_alloc(&pdev->dev, &interface);
 	if (IS_ERR(uacce)) {
 		pci_err(pdev, "fail to alloc uacce device\n!");
 		return PTR_ERR(uacce);
 	}
+	if (flags != interface.flags) {
+		pci_err(pdev, "fail to enable sva\n!");
+		uacce_remove(uacce);
+		return -EINVAL;
+	}
+
 	qm->uacce = uacce;
 
 	qm_uacce_base_init(qm);
