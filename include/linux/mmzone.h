@@ -683,14 +683,17 @@ enum zone_watermarks {
  * is used by GFP_UNMOVABLE and GFP_RECLAIMABLE.
  */
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
-#define NR_PCP_THP 2
+#define NR_PCP_THP 1
+#define NR_PCP_THP_UNMOVABLE 1
 #define NR_PCP_ORDERS (PAGE_ALLOC_COSTLY_ORDER + 2)
 #else
 #define NR_PCP_THP 0
+#define NR_PCP_THP_UNMOVABLE 0
 #define NR_PCP_ORDERS (PAGE_ALLOC_COSTLY_ORDER + 1)
 #endif
 #define NR_LOWORDER_PCP_LISTS (MIGRATE_PCPTYPES * NR_PCP_ORDERS)
-#define NR_PCP_LISTS (NR_LOWORDER_PCP_LISTS + NR_PCP_THP)
+#define NR_PCP_OLD_LISTS (NR_LOWORDER_PCP_LISTS + NR_PCP_THP)
+#define NR_PCP_LISTS (NR_PCP_OLD_LISTS + NR_PCP_THP_UNMOVABLE)
 
 #define min_wmark_pages(z) (z->_watermark[WMARK_MIN] + z->watermark_boost)
 #define low_wmark_pages(z) (z->_watermark[WMARK_LOW] + z->watermark_boost)
@@ -727,7 +730,11 @@ struct per_cpu_pages {
 	short free_count;	/* consecutive free count */
 
 	/* Lists of pages, one per migrate type stored on the pcp-lists */
+#ifndef __GENKSYMS__
 	struct list_head lists[NR_PCP_LISTS];
+#else
+	struct list_head lists[NR_PCP_OLD_LISTS];
+#endif
 } ____cacheline_aligned_in_smp;
 
 struct per_cpu_zonestat {
