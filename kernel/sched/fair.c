@@ -6861,9 +6861,6 @@ static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 
 static inline int dynamic_affinity_mode(struct task_struct *p)
 {
-	if (!prefer_cpus_valid(p))
-		return -1;
-
 	if (smart_grid_used())
 		return task_group(p)->auto_affinity->mode == 0 ? -1 : 1;
 
@@ -7324,9 +7321,6 @@ static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 
 static inline int dynamic_affinity_mode(struct task_struct *p)
 {
-	if (!prefer_cpus_valid(p))
-		return -1;
-
 	return 0;
 }
 #endif /* CONFIG_QOS_SCHED_DYNAMIC_AFFINITY */
@@ -9055,6 +9049,9 @@ static void set_task_select_cpus(struct task_struct *p, int *idlest_cpu,
 	int cpu, mode;
 
 	p->select_cpus = p->cpus_ptr;
+	if (!prefer_cpus_valid(p))
+		return;
+
 	rcu_read_lock();
 	mode = dynamic_affinity_mode(p);
 	if (mode == -1) {
@@ -9734,7 +9731,7 @@ static int __init qos_sched_smt_noexpell_setup(char *__unused)
 }
 __setup("nosmtexpell", qos_sched_smt_noexpell_setup);
 
-static bool qos_smt_check_siblings_status(int this_cpu)
+static __always_inline bool qos_smt_check_siblings_status(int this_cpu)
 {
 	int cpu;
 
