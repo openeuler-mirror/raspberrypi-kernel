@@ -47,20 +47,26 @@ static int uacce_start_queue(struct uacce_queue *q)
 	return 0;
 }
 
-static int uacce_put_queue(struct uacce_queue *q)
+static int uacce_stop_queue(struct uacce_queue *q)
 {
 	struct uacce_device *uacce = q->uacce;
 
 	if ((q->state == UACCE_Q_STARTED) && uacce->ops->stop_queue)
 		uacce->ops->stop_queue(q);
 
-	if ((q->state == UACCE_Q_INIT || q->state == UACCE_Q_STARTED) &&
-	     uacce->ops->put_queue)
-		uacce->ops->put_queue(q);
-
 	q->state = UACCE_Q_ZOMBIE;
 
 	return 0;
+}
+
+static void uacce_put_queue(struct uacce_queue *q)
+{
+	struct uacce_device *uacce = q->uacce;
+
+	uacce_stop_queue(q);
+
+	if (uacce->ops->put_queue)
+		uacce->ops->put_queue(q);
 }
 
 static long uacce_cmd_share_qfr(struct uacce_queue *src, int fd)
@@ -222,7 +228,7 @@ static long uacce_fops_unl_ioctl(struct file *filep,
 		ret = uacce_start_queue(q);
 		break;
 	case UACCE_CMD_PUT_Q:
-		ret = uacce_put_queue(q);
+		ret = uacce_stop_queue(q);
 		break;
 	case UACCE_CMD_SHARE_SVAS:
 		ret = uacce_cmd_share_qfr(q, (int)arg);
@@ -360,40 +366,53 @@ static void uacce_vma_close(struct vm_area_struct *vma)
 	struct uacce_queue *q = vma->vm_private_data;
 	struct uacce_qfile_region *qfr = NULL;
 	struct uacce_device *uacce = q->uacce;
-	struct device *dev = &q->uacce->dev;
 
 	if (vma->vm_pgoff >= UACCE_MAX_REGION)
 		return;
 
-	qfr = q->qfrs[vma->vm_pgoff];
-	if (!qfr) {
-		dev_err(dev, "qfr NULL, type %lu!\n", vma->vm_pgoff);
-		return;
-	}
-
-	if (qfr->type == UACCE_QFRT_SS &&
+	if (vma->vm_pgoff == UACCE_QFRT_SS &&
 	    atomic_read(&current->active_mm->mm_users) > 0) {
 		/*
 		 * uacce_vma_close() and uacce_remove() may be executed concurrently.
 		 * To avoid accessing the same address at the same time, takes the uacce->mutex.
 		 */
 		mutex_lock(&uacce->mutex);
+		mutex_lock(&q->mutex);
+		qfr = q->qfrs[vma->vm_pgoff];
+		if (!qfr) {
+			mutex_lock(&q->mutex);
+			mutex_unlock(&uacce->mutex);
+			return;
+		}
 		if ((q->state == UACCE_Q_STARTED) && uacce->ops->stop_queue)
 			uacce->ops->stop_queue(q);
 		uacce_free_dma_buffers(q);
 		q->qfrs[vma->vm_pgoff] = NULL;
+		mutex_unlock(&q->mutex);
 		mutex_unlock(&uacce->mutex);
-		kfree(qfr);
-	} else if (qfr->type != UACCE_QFRT_SS) {
+		if (qfr != &noiommu_ss_default_qfr)
+			kfree(qfr);
+	} else if (vma->vm_pgoff != UACCE_QFRT_SS) {
 		mutex_lock(&q->mutex);
+		qfr = q->qfrs[vma->vm_pgoff];
+		if (!qfr) {
+			mutex_unlock(&q->mutex);
+			return;
+		}
 		q->qfrs[vma->vm_pgoff] = NULL;
 		mutex_unlock(&q->mutex);
 		kfree(qfr);
 	}
 }
 
+static int uacce_vma_mremap(struct vm_area_struct *area)
+{
+	return -EPERM;
+}
+
 static const struct vm_operations_struct uacce_vm_ops = {
 	.close = uacce_vma_close,
+	.mremap = uacce_vma_mremap,
 };
 
 static int get_sort_base(struct uacce_dma_slice *list, int low, int high,
@@ -615,24 +634,28 @@ static int uacce_fops_mmap(struct file *filep, struct vm_area_struct *vma)
 	else
 		return -EINVAL;
 
-	if (q->qfrs[type])
-		return -EEXIST;
-
-	qfr = kzalloc(sizeof(*qfr), GFP_KERNEL);
-	if (!qfr)
-		return -ENOMEM;
-
 	vm_flags_set(vma, VM_DONTCOPY | VM_DONTEXPAND | VM_WIPEONFORK);
 	vma->vm_ops = &uacce_vm_ops;
 	vma->vm_private_data = q;
-	qfr->type = type;
 
 	mutex_lock(&q->mutex);
+	if (q->qfrs[type]) {
+		mutex_unlock(&q->mutex);
+		return -EEXIST;
+	}
+
+	qfr = kzalloc(sizeof(*qfr), GFP_KERNEL);
+	if (!qfr) {
+		ret = -ENOMEM;
+		goto out_with_lock;
+	}
+
 	if (!uacce_queue_is_valid(q)) {
 		ret = -ENXIO;
 		goto out_with_lock;
 	}
 
+	qfr->type = type;
 	q->qfrs[type] = qfr;
 
 	switch (type) {
@@ -664,9 +687,9 @@ static int uacce_fops_mmap(struct file *filep, struct vm_area_struct *vma)
 	return ret;
 
 out_with_lock:
+	q->qfrs[type] = NULL;
 	mutex_unlock(&q->mutex);
 	kfree(qfr);
-	q->qfrs[type] = NULL;
 	return ret;
 }
 
