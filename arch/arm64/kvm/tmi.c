@@ -53,13 +53,6 @@ u64 tmi_data_create(u64 numa_set, u64 rd, u64 map_addr, u64 src, u64 level)
 	return res.a1;
 }
 
-u64 tmi_data_destroy(u64 rd, u64 map_addr, u64 level)
-{
-	struct arm_smccc_res res;
-
-	arm_smccc_1_1_smc(TMI_TMM_DATA_DESTROY, rd, map_addr, level, &res);
-	return res.a1;
-}
 
 u64 tmi_cvm_activate(u64 rd)
 {
@@ -148,14 +141,6 @@ u64 tmi_ttt_map_range(u64 rd, u64 map_addr, u64 size, u64 cur_node, u64 target_n
 	struct arm_smccc_res res;
 
 	arm_smccc_1_1_smc(TMI_TMM_TTT_MAP_RANGE, rd, map_addr, size, cur_node, target_node, &res);
-	return res.a1;
-}
-
-u64 tmi_ttt_unmap_range(u64 rd, u64 map_addr, u64 size, u64 node_id)
-{
-	struct arm_smccc_res res;
-
-	arm_smccc_1_1_smc(TMI_TMM_TTT_UNMAP_RANGE, rd, map_addr, size, node_id, &res);
 	return res.a1;
 }
 
