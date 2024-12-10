@@ -1809,9 +1809,14 @@ struct vc4_hvs *__vc4_hvs_alloc(struct vc4_dev *vc4,
 		return ERR_PTR(-ENODEV);
 	}
 
-	drm_mm_init(&hvs->dlist_mm, dlist_start, dlist_size);
-
-	hvs->dlist_mem_size = dlist_size;
+	/* Set up the HVS display list memory manager.  We never
+	 * overwrite the setup from the bootloader (just 128b out of
+	 * our 16K), since we don't want to scramble the screen when
+	 * transitioning from the firmware's boot setup to runtime.
+	 */
+	drm_mm_init(&hvs->dlist_mm,
+		    HVS_BOOTLOADER_DLIST_END,
+		    (SCALER_DLIST_SIZE >> 2) - HVS_BOOTLOADER_DLIST_END);
 
 	/* Set up the HVS LBM memory manager.  We could have some more
 	 * complicated data structure that allowed reuse of LBM areas
