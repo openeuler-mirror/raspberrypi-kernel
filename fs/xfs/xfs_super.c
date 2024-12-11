@@ -1889,7 +1889,11 @@ xfs_remount_ro(
 	xfs_inodegc_stop(mp);
 
 	/* Free the per-AG metadata reservation pool. */
-	xfs_fs_unreserve_ag_blocks(mp);
+	error = xfs_fs_unreserve_ag_blocks(mp);
+	if (error) {
+		xfs_force_shutdown(mp, SHUTDOWN_CORRUPT_INCORE);
+		return error;
+	}
 
 	/*
 	 * Before we sync the metadata, we need to free up the reserve block
