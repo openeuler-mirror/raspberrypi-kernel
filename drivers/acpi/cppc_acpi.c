@@ -1209,11 +1209,6 @@ static int cppc_get_perf(int cpunum, enum cppc_regs reg_idx, u64 *perf)
 		return ret;
 	}
 
-	if (!CPC_SUPPORTED(reg)) {
-		pr_debug("CPC register %d is not supported\n", reg_idx);
-		return -EOPNOTSUPP;
-	}
-
 	cpc_read(cpunum, reg, perf);
 
 	return 0;
@@ -1628,6 +1623,17 @@ static int cppc_set_reg(int cpu, enum cppc_regs reg_idx, u64 val)
 	return cpc_write(cpu, reg, val);
 }
 
+/*
+ * cppc_get_epp_caps() - Read the EPP register
+ * @cpunum: CPU from which to read register.
+ * @epp_val: address of a variable to store the returned EPP value.
+*/
+int cppc_get_epp_caps(int cpunum, u64 *epp_val)
+{
+	return cppc_get_reg(cpunum, ENERGY_PERF, epp_val);
+}
+EXPORT_SYMBOL_GPL(cppc_get_epp_caps);
+
 /**
  * cppc_set_epp() - Write the EPP register
  * @cpu:CPU on which to write register.
@@ -1664,13 +1670,24 @@ EXPORT_SYMBOL_GPL(cppc_set_auto_act_window);
 /**
  * cppc_get_auto_sel() - Read autonomous selection register.
  * @cpunum:CPU from which to read register.
- * @auto_act_window:Return address.
+ * @auto_sel:Return address.
 */
 int cppc_get_auto_sel(int cpunum, u64 *auto_sel)
 {
 	return cppc_get_reg(cpunum, AUTO_SEL_ENABLE, auto_sel);
 }
 EXPORT_SYMBOL_GPL(cppc_get_auto_sel);
+
+/**
+ * cppc_set_auto_sel_caps() - Write autonomous selection register.
+ * @cpu: CPU on which to write register.
+ * @enable: the desired value of autonomous selection resiter to be updated.
+*/
+int cppc_set_auto_sel_caps(int cpu, bool enable)
+{
+	return cppc_set_reg(cpu, AUTO_SEL_ENABLE, enable);
+}
+EXPORT_SYMBOL_GPL(cppc_set_auto_sel_caps);
 
 /**
  * cppc_get_auto_sel_caps - Read autonomous selection register.
@@ -1759,17 +1776,12 @@ int cppc_set_auto_sel(int cpu, bool enable)
 		/* after writing CPC, transfer the ownership of PCC to platform */
 		ret = send_pcc_cmd(pcc_ss_id, CMD_WRITE);
 		up_write(&pcc_ss_data->pcc_lock);
-
-		return ret;
+	} else {
+		ret = -ENOTSUPP;
+		pr_debug("_CPC in PCC is not supported\n");
 	}
 
-	if (!CPC_SUPPORTED(auto_sel_reg)) {
-		pr_debug("CPC register (reg_idx=%u) is not supported\n",
-			 AUTO_SEL_ENABLE);
-		return -EOPNOTSUPP;
-	}
-
-	return cpc_write(cpu, auto_sel_reg, enable);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cppc_set_auto_sel);
 
