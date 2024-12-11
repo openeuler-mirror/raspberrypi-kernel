@@ -33,18 +33,19 @@
 #ifdef CONFIG_SUBARCH_C3B
 #define VPN_BITS	8
 #define GUEST_RESET_PC          0xffffffff80011100
+#define KVM_MAX_VCPUS   64
 #endif
 
 #ifdef CONFIG_SUBARCH_C4
 #define VPN_BITS	10
 #define GUEST_RESET_PC          0xfff0000000011002
+#define KVM_MAX_VCPUS   256
 #endif
 
 #define VPN_FIRST_VERSION	(1UL << VPN_BITS)
 #define VPN_MASK		((1UL << VPN_BITS) - 1)
 #define VPN_SHIFT		(64 - VPN_BITS)
 
-#define KVM_MAX_VCPUS 64
 #define KVM_INTERNAL_MEM_SLOTS	(KVM_MEM_SLOTS_NUM - 512)
 
 #define KVM_HALT_POLL_NS_DEFAULT 0
@@ -65,31 +66,15 @@
 #define KVM_PHYS_MASK	(KVM_PHYS_SIZE - _AC(1, ULL))
 
 struct kvm_arch_memory_slot {
-	unsigned long host_phys_addr;
-	bool valid;
 };
 
 struct kvm_arch {
 	unsigned long host_phys_addr;
 	unsigned long size;
 
-	/* segment table */
-	unsigned long *seg_pgd;
-
 	struct swvm_mem mem;
 	/* Addtional stage page table*/
 	pgd_t *pgd;
-};
-
-#define KVM_NR_MEM_OBJS		40
-
-/*
- * We don't want allocation failures within the mmu code, so we preallocate
- * enough memory for a single page fault in a cache.
- */
-struct kvm_mmu_memory_cache {
-	int nobjs;
-	void *objects[KVM_NR_MEM_OBJS];
 };
 
 struct kvm_vcpu_arch {
@@ -128,10 +113,6 @@ struct kvm_vcpu_arch {
 
 	/* Cache some mmu pages needed inside spinlock regions */
 	struct kvm_mmu_memory_cache mmu_page_cache;
-
-	/* guest live migration */
-	unsigned long migration_mark;
-	unsigned long shtclock;
 };
 
 struct vmem_info {
@@ -157,9 +138,6 @@ struct kvm_vcpu_stat {
 	u64 ipi_exits;
 	u64 timer_exits;
 	u64 debug_exits;
-#ifdef CONFIG_KVM_MEMHOTPLUG
-	u64 memhotplug_exits;
-#endif
 	u64 fatal_error_exits;
 	u64 halt_exits;
 	u64 halt_successful_poll;
@@ -176,16 +154,9 @@ struct kvm_vcpu_stat {
 	u64 gtime;
 };
 
-#ifdef CONFIG_KVM_MEMHOTPLUG
-void vcpu_mem_hotplug(struct kvm_vcpu *vcpu, unsigned long start_addr);
-#endif
 #ifdef CONFIG_SUBARCH_C4
 #define KVM_ARCH_WANT_MMU_NOTIFIER
 #endif
-int kvm_set_spte_hva(struct kvm *kvm, unsigned long hva, pte_t pte);
-int kvm_unmap_hva_range(struct kvm *kvm, unsigned long start, unsigned long end, bool blockable);
-int kvm_age_hva(struct kvm *kvm, unsigned long start, unsigned long end);
-int kvm_test_age_hva(struct kvm *kvm, unsigned long hva);
 
 void update_vcpu_stat_time(struct kvm_vcpu_stat *vcpu_stat);
 void check_vcpu_requests(struct kvm_vcpu *vcpu);

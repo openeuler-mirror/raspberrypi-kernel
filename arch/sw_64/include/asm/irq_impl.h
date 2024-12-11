@@ -24,8 +24,9 @@
 
 enum sw64_irq_type {
 	INT_IPI		= 1,
-	INT_PC0		= 2,
-	INT_PC1		= 3,
+	INT_PC		= 2,	/* C4 PMI */
+	INT_PC0		= 2,	/* C3 PMI 0 */
+	INT_PC1		= 3,	/* C3 PMI 1 */
 	INT_INTx	= 5,
 	INT_MSI		= 6,
 	INT_MT		= 7,
@@ -33,6 +34,7 @@ enum sw64_irq_type {
 	INT_FAULT	= 10,
 	INT_VT_SERIAL	= 12,
 	INT_VT_HOTPLUG	= 13,
+	INT_VT_GPIOA_PIN0 = 15,
 	INT_DEV		= 17,
 	INT_NMI		= 18,
 	INT_LEGACY	= 31,

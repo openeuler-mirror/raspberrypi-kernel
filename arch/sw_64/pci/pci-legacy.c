@@ -84,7 +84,7 @@ void __init common_init_pci(void)
 			continue;
 		hose->busn_space->start = last_bus;
 		init_busnr = (0xff << 16) + ((last_bus + 1) << 8) + (last_bus);
-		write_rc_conf(hose->node, hose->index, RC_PRIMARY_BUS, init_busnr);
+		writel(init_busnr, (hose->rc_config_space_base + RC_PRIMARY_BUS));
 		offset = hose->mem_space->start - PCI_32BIT_MEMIO;
 		if (is_in_host())
 			hose->first_busno = last_bus + 1;
@@ -117,10 +117,10 @@ void __init common_init_pci(void)
 				last_bus++;
 
 		hose->last_busno = hose->busn_space->end = last_bus;
-		init_busnr = read_rc_conf(hose->node, hose->index, RC_PRIMARY_BUS);
+		init_busnr = readl(hose->rc_config_space_base + RC_PRIMARY_BUS);
 		init_busnr &= ~(0xff << 16);
 		init_busnr |= last_bus << 16;
-		write_rc_conf(hose->node, hose->index, RC_PRIMARY_BUS, init_busnr);
+		writel(init_busnr, (hose->rc_config_space_base + RC_PRIMARY_BUS));
 		pci_bus_update_busn_res_end(bus, last_bus);
 		last_bus++;
 	}
@@ -206,6 +206,8 @@ int sw64_map_irq(const struct pci_dev *dev, u8 slot, u8 pin)
 	return sw64_chip_init->pci_init.map_irq(dev, slot, pin);
 }
 
+static bool rc_linkup[MAX_NUMNODES][MAX_NR_RCS_PER_NODE];
+
 static void __init
 sw64_init_host(unsigned long node, unsigned long index)
 {
@@ -228,12 +230,13 @@ sw64_init_host(unsigned long node, unsigned long index)
 	sw64_chip_init->pci_init.hose_init(hose);
 
 	if (sw64_chip_init->pci_init.set_rc_piu)
-		sw64_chip_init->pci_init.set_rc_piu(node, index);
+		sw64_chip_init->pci_init.set_rc_piu(hose);
 
-	ret = sw64_chip_init->pci_init.check_pci_linkup(node, index);
+	ret = sw64_chip_init->pci_init.check_pci_linkup(hose);
 	if (ret == 0) {
 		/* Root Complex downstream port is link up */
-		pci_mark_rc_linkup(node, index); // 8-bit per node
+		pci_mark_rc_linkup(hose); // 8-bit per node
+		rc_linkup[node][index] = true;
 	}
 }
 
@@ -245,7 +248,7 @@ static bool __init is_any_rc_linkup_one_node(unsigned long node)
 	int i;
 
 	for (i = 0; i < MAX_NR_RCS_PER_NODE; ++i) {
-		if (pci_get_rc_linkup(node, i))
+		if (rc_linkup[node][i])
 			return true;
 	}
 
@@ -287,7 +290,7 @@ void __init sw64_init_arch(void)
 				memset(msg, 0, 64);
 				sprintf(msg, "Node %ld: RC [ ", node);
 				for (i = 0; i < MAX_NR_RCS_PER_NODE; i++) {
-					if (pci_get_rc_linkup(node, i)) {
+					if (rc_linkup[node][i]) {
 						memset(id, 0, 8);
 						sprintf(id, "%d ", i);
 						strcat(msg, id);

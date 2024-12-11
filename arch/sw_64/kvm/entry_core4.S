@@ -219,8 +219,6 @@ $g_setfpec_over:
 	ldl	$15, PT_REGS_R15(sp)
 	ldl	$26, PT_REGS_R26(sp)
 	ldl	$29, PT_REGS_GP(sp)
-	csrr	$2, CSR_PS
-	stl	$2, PT_REGS_PS(sp)
 	ldi	sp, PT_REGS_SIZE(sp)
 
 	/* restore host fpregs */
@@ -266,6 +264,8 @@ $setfpec_over:
 	csrr    $18, CSR_EARG2
 
 	ldi	$19, -PT_REGS_SIZE(sp)
+	csrr	$1, CSR_CAUSE
+	stl	$1, PT_REGS_CAUSE($19)
 	call	$26, do_entInt
 	ldl	$26, VCPU_RET_RA(sp)
 	ldl	$0, VCPU_RET_R0(sp)
