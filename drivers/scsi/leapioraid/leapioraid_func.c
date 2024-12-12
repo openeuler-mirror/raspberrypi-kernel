@@ -1319,7 +1319,7 @@ leapioraid_base_process_reply_queue(
 	    & LEAPIORAID_RPY_DESCRIPT_FLAGS_TYPE_MASK;
 	if (request_descript_type == LEAPIORAID_RPY_DESCRIPT_FLAGS_UNUSED) {
 		atomic_dec(&reply_q->busy);
-		return completed_cmds;
+		return 1;
 	}
 	cb_idx = 0xFF;
 	do {
