@@ -468,6 +468,7 @@ config PWM_PCA9685
 config PWM_PIO_RP1
 	tristate "RP1 PIO PWM support"
 	depends on FIRMWARE_RP1 || COMPILE_TEST
+	select RP1_PIO
 	help
 	  This is a PWM framework driver for Raspberry Pi 5, using the PIO
 	  hardware of RP1 to provide PWM functionality. Supports up to 4
