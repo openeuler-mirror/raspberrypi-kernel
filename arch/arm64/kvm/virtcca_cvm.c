@@ -735,6 +735,11 @@ int kvm_tec_enter(struct kvm_vcpu *vcpu)
 	if (READ_ONCE(cvm->state) != CVM_STATE_ACTIVE)
 		return -EINVAL;
 
+	if (cpumask_weight(&current->cpus_mask) > 1) {
+		kvm_err("cvm only support running with binding cpu\n");
+		return -EINVAL;
+	}
+
 	run = tec->tec_run;
 	/* set/clear TWI TWE flags */
 	if (vcpu->arch.hcr_el2 & HCR_TWI)
