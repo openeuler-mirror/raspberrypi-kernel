@@ -100,7 +100,7 @@ leapioraid_transport_find_parent_node(
 	return 0;
 }
 
-u8
+static u8
 leapioraid_transport_get_port_id_by_rphy(struct LEAPIORAID_ADAPTER *ioc,
 			       struct sas_rphy *rphy)
 {
