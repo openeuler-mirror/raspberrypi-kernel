@@ -145,7 +145,7 @@ int __weak arch_asym_cpu_priority(int cpu)
 
 #ifdef CONFIG_QOS_SCHED
 
-static DEFINE_PER_CPU_SHARED_ALIGNED(struct list_head, qos_throttled_cfs_rq);
+static DEFINE_PER_CPU_SECTION(struct list_head, qos_throttled_cfs_rq, PER_CPU_SHARED_ALIGNED_SECTION) __attribute__((__aligned__(128)));
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct hrtimer, qos_overload_timer);
 static DEFINE_PER_CPU(int, qos_cpu_overload);
 unsigned int sysctl_overload_detect_period = 5000;  /* in ms */
