@@ -332,7 +332,7 @@
  *   the end of the enum.  Before using this macro, make sure this is actually
  *   safe to do.
  */
-#ifdef __GENKSYMS__
+#if defined(__GENKSYMS__) && IS_ENABLED(CONFIG_KABI_COMPAT)
 
 # define KABI_CONST
 # define KABI_ADD_MODIFIER(_new)
