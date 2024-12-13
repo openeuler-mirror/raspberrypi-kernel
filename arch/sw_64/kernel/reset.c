@@ -1,42 +1,30 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2020-2022 Sunway Technology Corporation Limited
+ * Copyright (C) 2020-2024 Sunway Technology Corporation Limited
  */
+
 #include <linux/acpi.h>
 #include <linux/console.h>
 #include <linux/delay.h>
 #include <linux/efi.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
-#include <linux/pci.h>
 #include <linux/pm.h>
 #include <linux/reboot.h>
 #include <linux/types.h>
 
 #include <acpi/reboot.h>
 #include <asm/idle.h>
-#include <asm/sw64io.h>
+#include <asm/efi.h>
 
-void fix_jm585_reset(void)
+void (*pm_power_off)(void);
+EXPORT_SYMBOL(pm_power_off);
+
+void machine_halt(void)
 {
-	struct pci_dev *pdev;
-	struct pci_controller *hose;
-	int val;
-
-	pdev = pci_get_device(PCI_VENDOR_ID_JMICRON,
-				0x0585, NULL);
-	if (pdev) {
-		hose = pci_bus_to_pci_controller(pdev->bus);
-		val = readl(hose->rc_config_space_base + RC_PORT_LINK_CTL);
-		writel((val | 0x8), (hose->rc_config_space_base + RC_PORT_LINK_CTL));
-		writel(val, (hose->rc_config_space_base + RC_PORT_LINK_CTL));
-
-	}
-
-}
-static void default_halt(void)
-{
+	preempt_disable();
 	local_irq_disable();
+	smp_send_stop();
 
 	pr_notice("\n\n** You can safely turn off the power now **\n\n");
 
@@ -44,75 +32,89 @@ static void default_halt(void)
 		arch_cpu_idle();
 }
 
-static void default_poweroff(void)
-{
-	/* No point in taking interrupts anymore. */
-	local_irq_disable();
-#ifdef CONFIG_EFI
-	efi.reset_system(EFI_RESET_SHUTDOWN, EFI_SUCCESS, 0, NULL);
-#endif
-	while (true)
-		arch_cpu_idle();
-}
-
-static void default_restart(void)
-{
-	/* No point in taking interrupts anymore. */
-	local_irq_disable();
-
-	fix_jm585_reset();
-#ifdef CONFIG_EFI
-	if (efi_capsule_pending(NULL))
-		efi_reboot(REBOOT_WARM, NULL);
-	else
-		efi_reboot(REBOOT_COLD, NULL);
-#endif
-
-	while (true)
-		arch_cpu_idle();
-}
-
-void (*pm_restart)(void);
-
-void (*pm_power_off)(void);
-EXPORT_SYMBOL(pm_power_off);
-
-void (*pm_halt)(void);
-
-void machine_halt(void)
-{
-#ifdef CONFIG_SMP
-	preempt_disable();
-	smp_send_stop();
-#endif
-	pm_halt();
-}
-
 void machine_power_off(void)
 {
-#ifdef CONFIG_SMP
 	preempt_disable();
+	local_irq_disable();
 	smp_send_stop();
-#endif
-	pm_power_off();
+
+	do_kernel_power_off();
+
+	/* VM cannot reach here */
+	WARN_ON(!is_in_host());
+
+	/**
+	 * Compatibility with old firmware, can be removed
+	 * when no longer support SW3231.
+	 */
+	if (!sunway_bios_version)
+		cpld_write(0x64, 0x00, 0xf0);
+
+	while (true)
+		arch_cpu_idle();
 }
 
 void machine_restart(char *command)
 {
-#ifdef CONFIG_SMP
 	preempt_disable();
+	local_irq_disable();
 	smp_send_stop();
-#endif
+
 	do_kernel_restart(command);
-	pm_restart();
+
+	/* VM cannot reach here */
+	WARN_ON(!is_in_host());
+
+	acpi_reboot();
+
+	/**
+	 * Compatibility with old firmware, can be removed
+	 * when no longer support SW3231.
+	 */
+	if (!sunway_bios_version)
+		cpld_write(0x64, 0x00, 0xc3);
+	else if (efi_enabled(EFI_RUNTIME_SERVICES))
+		efi_reboot(reboot_mode, NULL);
+
+	while (true)
+		arch_cpu_idle();
 }
 
-static int __init sw64_reboot_setup(void)
+static int vm_restart(struct sys_off_data *data)
 {
-	pm_restart = default_restart;
-	pm_power_off = default_poweroff;
-	pm_halt = default_halt;
+	hcall(HCALL_SET_CLOCKEVENT, 0, 0, 0);
+	hcall(HCALL_RESTART, 0, 0, 0);
+	mb();
+
+	return NOTIFY_DONE;
+}
+
+static int vm_power_off(struct sys_off_data *data)
+{
+	hcall(HCALL_SET_CLOCKEVENT, 0, 0, 0);
+	hcall(HCALL_SHUTDOWN, 0, 0, 0);
+	mb();
+
+	return NOTIFY_DONE;
+}
+
+static int __init vm_power_init(void)
+{
+	struct sys_off_handler *handler;
+
+	if (is_in_host())
+		return 0;
+
+	handler = register_sys_off_handler(SYS_OFF_MODE_RESTART,
+			SYS_OFF_PRIO_DEFAULT, vm_restart, NULL);
+	if (WARN_ON(IS_ERR(handler)))
+		return PTR_ERR(handler);
+
+	handler = register_sys_off_handler(SYS_OFF_MODE_POWER_OFF,
+			SYS_OFF_PRIO_DEFAULT, vm_power_off, NULL);
+	if (WARN_ON(IS_ERR(handler)))
+		return PTR_ERR(handler);
 
 	return 0;
 }
-arch_initcall(sw64_reboot_setup);
+arch_initcall(vm_power_init);

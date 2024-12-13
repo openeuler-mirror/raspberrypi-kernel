@@ -68,9 +68,9 @@ static int __init setup_mem_size(char *p)
 	mem_size_limit = size;
 
 	if (mem_start < NODE0_START) {
-		mem_start = NODE0_START;
 		mem_size_limit -= min(mem_size_limit,
 				NODE0_START - mem_start);
+		mem_start = NODE0_START;
 	}
 
 	return 0;
@@ -109,6 +109,9 @@ switch_to_system_map(void)
 {
 	memset(swapper_pg_dir, 0, PAGE_SIZE);
 	update_ptbr_sys(virt_to_phys(swapper_pg_dir));
+#ifdef CONFIG_SUBARCH_C4
+	update_ptbr_usr(__pa_symbol(empty_zero_page));
+#endif
 	tbiv();
 }
 
@@ -328,16 +331,16 @@ core_initcall_sync(sw64_kvm_pool_init);
 
 void __init sw64_memblock_init(void)
 {
-	/**
-	 * Detect all memory on all nodes, used in the following
-	 * cases:
-	 * 1. Legacy memory detect
-	 * 2. Legacy NUMA initialization
-	 */
-	setup_socket_info();
-	show_socket_mem_layout();
-
 	if (sunway_boot_magic != 0xDEED2024UL) {
+		/**
+		 * Detect all memory on all nodes, used in the following
+		 * cases:
+		 * 1. Legacy memory detect
+		 * 2. Legacy NUMA initialization
+		 */
+		setup_socket_info();
+		show_socket_mem_layout();
+
 		/* Find our usable memory */
 		mem_detect();
 
@@ -384,6 +387,8 @@ void __init sw64_memblock_init(void)
 			mem_desc.size = memblock_phys_mem_size();
 		}
 	}
+
+	early_init_fdt_scan_reserved_mem();
 
 	/* end of DRAM range may have been changed */
 	max_pfn = max_low_pfn = PFN_DOWN(memblock_end_of_DRAM());
@@ -468,23 +473,21 @@ void arch_remove_memory(u64 start, u64 size, struct vmem_altmap *altmap)
 #endif
 
 static const pgprot_t protection_map[16] = {
-	[VM_NONE]					= _PAGE_P(_PAGE_FOE | _PAGE_FOW |
-								  _PAGE_FOR),
-	[VM_READ]					= _PAGE_P(_PAGE_FOE | _PAGE_FOW),
-	[VM_WRITE]					= _PAGE_P(_PAGE_FOE),
-	[VM_WRITE | VM_READ]				= _PAGE_P(_PAGE_FOE),
-	[VM_EXEC]					= _PAGE_P(_PAGE_FOW | _PAGE_FOR),
-	[VM_EXEC | VM_READ]				= _PAGE_P(_PAGE_FOW),
-	[VM_EXEC | VM_WRITE]				= _PAGE_P(0),
-	[VM_EXEC | VM_WRITE | VM_READ]			= _PAGE_P(0),
-	[VM_SHARED]					= _PAGE_S(_PAGE_FOE | _PAGE_FOW |
-								  _PAGE_FOR),
-	[VM_SHARED | VM_READ]				= _PAGE_S(_PAGE_FOE | _PAGE_FOW),
-	[VM_SHARED | VM_WRITE]				= _PAGE_S(_PAGE_FOE),
-	[VM_SHARED | VM_WRITE | VM_READ]		= _PAGE_S(_PAGE_FOE),
-	[VM_SHARED | VM_EXEC]				= _PAGE_S(_PAGE_FOW | _PAGE_FOR),
-	[VM_SHARED | VM_EXEC | VM_READ]			= _PAGE_S(_PAGE_FOW),
-	[VM_SHARED | VM_EXEC | VM_WRITE]		= _PAGE_S(0),
-	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]	= _PAGE_S(0)
+	[VM_NONE]					= PAGE_NONE,
+	[VM_READ]                                       = PAGE_READONLY_NOEXEC,
+	[VM_WRITE]                                      = PAGE_COPY_NOEXEC,
+	[VM_WRITE | VM_READ]                            = PAGE_COPY_NOEXEC,
+	[VM_EXEC]                                       = PAGE_EXEC,
+	[VM_EXEC | VM_READ]                             = PAGE_READONLY_EXEC,
+	[VM_EXEC | VM_WRITE]                            = PAGE_COPY_EXEC,
+	[VM_EXEC | VM_WRITE | VM_READ]                  = PAGE_COPY_EXEC,
+	[VM_SHARED]                                     = PAGE_NONE,
+	[VM_SHARED | VM_READ]                           = PAGE_READONLY_NOEXEC,
+	[VM_SHARED | VM_WRITE]                          = PAGE_SHARED_NOEXEC,
+	[VM_SHARED | VM_WRITE | VM_READ]                = PAGE_SHARED_NOEXEC,
+	[VM_SHARED | VM_EXEC]                           = PAGE_EXEC,
+	[VM_SHARED | VM_EXEC | VM_READ]                 = PAGE_READONLY_EXEC,
+	[VM_SHARED | VM_EXEC | VM_WRITE]                = PAGE_SHARED_EXEC,
+	[VM_SHARED | VM_EXEC | VM_WRITE | VM_READ]      = PAGE_SHARED_EXEC
 };
 DECLARE_VM_GET_PAGE_PROT

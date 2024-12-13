@@ -17,6 +17,7 @@
 #include <linux/irqchip.h>
 #include <linux/seq_file.h>
 
+#include <asm/cpu.h>
 #include <asm/irq_impl.h>
 
 volatile unsigned long irq_err_count;
@@ -127,7 +128,7 @@ void __init init_IRQ(void)
 		set_nmi(INT_PC);
 	}
 
-	sw64_init_irq();
+	sunway_init_pci_intx();
 	irqchip_init();
 }
 

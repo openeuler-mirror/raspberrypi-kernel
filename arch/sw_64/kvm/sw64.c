@@ -15,6 +15,7 @@
 #include <asm/barrier.h>
 #include <asm/core.h>
 #include <asm/pci_impl.h>
+#include <asm/cpu.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -117,7 +118,7 @@ void sw64_kvm_switch_vpn(struct kvm_vcpu *vcpu)
 	}
 }
 
-void check_vcpu_requests(struct kvm_vcpu *vcpu)
+static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 {
 	unsigned long vpn;
 	long cpu = smp_processor_id();
@@ -127,7 +128,12 @@ void check_vcpu_requests(struct kvm_vcpu *vcpu)
 			vpn = vcpu->arch.vpnc[cpu] & VPN_MASK;
 			tbivpn(0, 0, vpn);
 		}
+
+		if (kvm_dirty_ring_check_request(vcpu))
+			return 0;
 	}
+
+	return 1;
 }
 
 
@@ -175,6 +181,8 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_IRQCHIP:
 	case KVM_CAP_IOEVENTFD:
 	case KVM_CAP_SYNC_MMU:
+	case KVM_CAP_READONLY_MEM:
+	case KVM_CAP_SET_GUEST_DEBUG:
 		r = 1;
 		break;
 	case KVM_CAP_NR_VCPUS:
@@ -380,9 +388,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		}
 
 		if (ret <= 0) {
-			local_irq_enable();
-			preempt_enable();
-			continue;
+			goto exit;
 		}
 
 		memset(&hargs, 0, sizeof(hargs));
@@ -402,7 +408,14 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		vcpu->arch.halted = 0;
 
 		sw64_kvm_switch_vpn(vcpu);
-		check_vcpu_requests(vcpu);
+		ret = check_vcpu_requests(vcpu);
+		if (ret <= 0) {
+exit:
+			local_irq_enable();
+			preempt_enable();
+			continue;
+		}
+
 		guest_enter_irqoff();
 
 		/* update aptp before the guest runs */
@@ -519,13 +532,6 @@ int kvm_arch_vcpu_ioctl_set_fpu(struct kvm_vcpu *vcpu, struct kvm_fpu *fpu)
 vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
 {
 	return VM_FAULT_SIGBUS;
-}
-
-void kvm_arch_flush_remote_tlbs_memslot(struct kvm *kvm,
-					struct kvm_memory_slot *memslot)
-{
-	/* Let implementation handle TLB/GVA invalidation */
-	kvm_arch_flush_shadow_memslot(kvm, memslot);
 }
 
 int kvm_dev_ioctl_check_extension(long ext)

@@ -8,13 +8,12 @@
 #include <asm/sw64io.h>
 
 struct sw64_early_init_ops {
-	void (*setup_core_map)(struct cpumask *cpumask);
+	void (*setup_core_map)(void);
 	unsigned long (*get_node_mem)(int nodeid);
 	void (*get_smp_info)(void);
 };
 
 struct sw64_pci_init_ops {
-	int (*map_irq)(const struct pci_dev *dev, u8 slot, u8 pin);
 	unsigned long (*get_rc_enable)(unsigned long node);
 	void (*hose_init)(struct pci_controller *hose);
 	void (*set_rc_piu)(struct pci_controller *hose);

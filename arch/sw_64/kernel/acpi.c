@@ -6,6 +6,7 @@
 #include <linux/memblock.h>
 #include <linux/smp.h>
 
+#include <asm/cpu.h>
 #include <asm/early_ioremap.h>
 
 #ifdef CONFIG_ACPI_HOTPLUG_CPU
@@ -148,7 +149,7 @@ acpi_numa_x2apic_affinity_init(struct acpi_srat_x2apic_cpu_affinity *pa)
 	/* Record the mapping from logical core id to node id */
 	cpu = rcid_to_cpu(rcid);
 	if (cpu < 0) {
-		pr_err("SRAT: Can not find the logical id for physical Core 0x%04x\n",
+		pr_warn_once("SRAT: Can not find the logical id for physical Core 0x%04x\n",
 				rcid);
 		return;
 	}
@@ -249,9 +250,9 @@ setup_rcid_and_core_mask(struct acpi_madt_sw_cintc *sw_cintc)
 	 * represents the maximum number of cores in the system.
 	 */
 	if (possible_cores >= nr_cpu_ids) {
-		pr_err(PREFIX "Core [0x%x] exceeds max core num [%u]\n",
+		pr_warn_once(PREFIX "Core [0x%x] exceeds max core num [%u]\n",
 			rcid, nr_cpu_ids);
-		return -ENODEV;
+		return 0;
 	}
 
 	/* The rcid of each core is unique */

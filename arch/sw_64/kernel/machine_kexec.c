@@ -54,7 +54,7 @@ void __init kexec_control_page_init(void)
 	phys_addr_t addr;
 
 	addr = memblock_phys_alloc_range(KEXEC_CONTROL_PAGE_SIZE, PAGE_SIZE,
-					0, KTEXT_MAX);
+					0, 0);
 	kexec_control_page = (void *)(__START_KERNEL_map + addr);
 }
 
@@ -105,8 +105,8 @@ void __init reserve_crashkernel(void)
 		pr_warn("Add crash kernel area [mem %#018llx-%#018llx] to memmap region failed.\n",
 				crash_base, crash_base + crash_size - 1);
 
-	if (crash_base >= KERNEL_IMAGE_SIZE)
-		pr_warn("Crash base should be less than %#x\n", KERNEL_IMAGE_SIZE);
+	if (crash_base < PCI_LEGACY_IO_SIZE)
+		pr_warn("Crash base should be greater than or equal to %#lx\n", PCI_LEGACY_IO_SIZE);
 
 	crashk_res.start = crash_base;
 	crashk_res.end = crash_base + crash_size - 1;
@@ -192,7 +192,6 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	cpu = smp_processor_id();
 	local_irq_disable();
-	kernel_restart_prepare(NULL);
 	atomic_set(&waiting_for_crash_ipi, num_online_cpus() - 1);
 	smp_call_function(machine_crash_nonpanic_core, NULL, false);
 	msecs = 1000; /* Wait at most a second for the other cpus to stop */
@@ -285,53 +284,6 @@ out:
 	return NULL;
 }
 
-#ifdef CONFIG_EFI
-static int update_efi_properties(const struct boot_params *params)
-{
-	int chosen_node, ret;
-	void *dtb_start = (void *)params->dtb_start;
-
-	if (!dtb_start)
-		return -EINVAL;
-
-	chosen_node = fdt_path_offset(dtb_start, "/chosen");
-	if (chosen_node < 0)
-		return -EINVAL;
-
-	ret = fdt_setprop_u64(dtb_start, chosen_node,
-			"linux,uefi-system-table",
-			params->efi_systab);
-	if (ret)
-		return ret;
-
-	ret = fdt_setprop_u64(dtb_start, chosen_node,
-			"linux,uefi-mmap-start",
-			params->efi_memmap);
-	if (ret)
-		return ret;
-
-	ret = fdt_setprop_u64(dtb_start, chosen_node,
-			"linux,uefi-mmap-size",
-			params->efi_memmap_size);
-	if (ret)
-		return ret;
-
-	ret = fdt_setprop_u64(dtb_start, chosen_node,
-			"linux,uefi-mmap-desc-size",
-			params->efi_memdesc_size);
-	if (ret)
-		return ret;
-
-	ret = fdt_setprop_u64(dtb_start, chosen_node,
-			"linux,uefi-mmap-desc-ver",
-			params->efi_memdesc_version);
-	if (ret)
-		return ret;
-
-	return 0;
-}
-#endif
-
 static void update_boot_params(void)
 {
 	struct boot_params params = { 0 };
@@ -364,19 +316,6 @@ static void update_boot_params(void)
 		params.efi_memmap_size = efi.memmap.map_end - efi.memmap.map;
 		params.efi_memdesc_size = efi.memmap.desc_size;
 		params.efi_memdesc_version = efi.memmap.desc_version;
-
-		/**
-		 * If current kernel take built-in DTB, it's possible that
-		 * there are no efi related properties in "chosen" node. So,
-		 * update these properties here.
-		 *
-		 * Harmless for the following cases:
-		 * 1. Current kernel take DTB from firmware
-		 * 2. New kernel with CONFIG_EFI=n
-		 * 3. New kernel take built-in DTB
-		 */
-		if (update_efi_properties(&params))
-			pr_err("Note: failed to update efi properties\n");
 #endif
 		/* update dtb base address */
 		sunway_dtb_address = params.dtb_start;

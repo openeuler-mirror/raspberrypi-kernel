@@ -27,6 +27,7 @@
 #include <asm/ptrace.h>
 
 #include <asm/kvm_mmio.h>
+#include <asm/cpu.h>
 
 #define last_vpn(cpu)	(cpu_data[cpu].last_vpn)
 
@@ -159,7 +160,6 @@ struct kvm_vcpu_stat {
 #endif
 
 void update_vcpu_stat_time(struct kvm_vcpu_stat *vcpu_stat);
-void check_vcpu_requests(struct kvm_vcpu *vcpu);
 void sw64_kvm_switch_vpn(struct kvm_vcpu *vcpu);
 int vmem_init(void);
 void vmem_exit(void);
