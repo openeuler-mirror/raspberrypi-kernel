@@ -128,7 +128,9 @@
 #include <linux/blk-cgroup.h>
 #include <linux/fadvise.h>
 #include <linux/sched/mm.h>
+#ifndef __GENKSYMS__
 #include <linux/dynamic_pool.h>
+#endif
 
 #include "internal.h"
 
