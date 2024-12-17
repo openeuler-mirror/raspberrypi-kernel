@@ -400,14 +400,8 @@ static void fscache_unhash_volume(struct fscache_volume *volume)
  */
 static void fscache_clear_volume_priv(struct fscache_volume *volume)
 {
-	if (volume->cache_priv) {
-		__fscache_begin_volume_access(volume, NULL,
-					      fscache_access_relinquish_volume);
-		if (volume->cache_priv)
-			volume->cache->ops->free_volume(volume);
-		fscache_end_volume_access(volume, NULL,
-					  fscache_access_relinquish_volume_end);
-	}
+	if (volume->cache_priv)
+		volume->cache->ops->free_volume(volume);
 }
 
 /*
