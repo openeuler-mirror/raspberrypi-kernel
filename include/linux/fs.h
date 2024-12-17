@@ -3582,4 +3582,8 @@ static inline void fs_file_read_update_args_by_trace(struct kiocb *iocb) {}
 static inline void fs_file_read_do_trace(struct kiocb *iocb) {}
 #endif
 
+#if IS_ENABLED(CONFIG_EROFS_FS)
+extern bool erofs_enabled;
+#endif
+
 #endif /* _LINUX_FS_H */

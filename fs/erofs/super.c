@@ -766,6 +766,9 @@ static int erofs_init_fs_context(struct fs_context *fc)
 {
 	struct erofs_sb_info *sbi;
 
+	if (!READ_ONCE(erofs_enabled))
+		return -EOPNOTSUPP;
+
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
 	if (!sbi)
 		return -ENOMEM;
