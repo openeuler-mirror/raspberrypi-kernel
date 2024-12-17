@@ -320,6 +320,26 @@ static bool fscache_cookie_same(const struct fscache_cookie *a,
 static atomic_t fscache_cookie_debug_id = ATOMIC_INIT(1);
 
 /*
+ * Increase the volume->n_hash_cookies count. Must be called when a cookie
+ * associated with the volume is added on the hash link.
+ */
+static void fscache_increase_volume_hash_cookies(struct fscache_volume *volume)
+{
+	atomic_inc(&volume->n_hash_cookies);
+}
+
+/*
+ * Decrease the volume->n_hash_cookies count. Must be called when a cookie
+ * associated with the volume is unhashed. When the count reaches 0, the volume
+ * waiting to be unhash needs to be awakened.
+ */
+static void fscache_decrease_volume_hash_cookies(struct fscache_volume *volume)
+{
+	if (atomic_dec_and_test(&volume->n_hash_cookies))
+		wake_up_var(&volume->n_hash_cookies);
+}
+
+/*
  * Allocate a cookie.
  */
 static struct fscache_cookie *fscache_alloc_cookie(
@@ -424,6 +444,9 @@ static bool fscache_hash_cookie(struct fscache_cookie *candidate)
 	hlist_bl_add_head(&candidate->hash_link, h);
 	set_bit(FSCACHE_COOKIE_IS_HASHED, &candidate->flags);
 	hlist_bl_unlock(h);
+
+	if (fscache_test_sync_volume_unhash(candidate->volume->cache))
+		fscache_increase_volume_hash_cookies(candidate->volume);
 
 	if (wait_for) {
 		fscache_wait_on_collision(candidate, wait_for);
@@ -933,6 +956,7 @@ static void fscache_cookie_drop_from_lru(struct fscache_cookie *cookie)
 static void fscache_unhash_cookie(struct fscache_cookie *cookie)
 {
 	struct hlist_bl_head *h;
+	struct fscache_volume *volume = cookie->volume;
 	unsigned int bucket;
 
 	bucket = cookie->key_hash & (ARRAY_SIZE(fscache_cookie_hash) - 1);
@@ -942,6 +966,10 @@ static void fscache_unhash_cookie(struct fscache_cookie *cookie)
 	hlist_bl_del(&cookie->hash_link);
 	clear_bit(FSCACHE_COOKIE_IS_HASHED, &cookie->flags);
 	hlist_bl_unlock(h);
+
+	if (fscache_test_sync_volume_unhash(volume->cache))
+		fscache_decrease_volume_hash_cookies(volume);
+
 	fscache_stat(&fscache_n_relinquishes_dropped);
 }
 

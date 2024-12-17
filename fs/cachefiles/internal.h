@@ -37,9 +37,11 @@ enum cachefiles_content {
  * Cached volume representation.
  */
 struct cachefiles_volume {
+	refcount_t			ref;
 	struct cachefiles_cache		*cache;
 	struct list_head		cache_link;	/* Link in cache->volumes */
 	struct fscache_volume		*vcookie;	/* The netfs's representation */
+	struct mutex			lock;		/* Lock for cachefiles_volume */
 	bool				dir_has_put;	/* Indicates cache dir has been put */
 	struct dentry			*dentry;	/* The volume dentry */
 	struct dentry			*fanout[256];	/* Fanout subdirs */
@@ -406,6 +408,8 @@ static inline void cachefiles_end_secure(struct cachefiles_cache *cache,
 /*
  * volume.c
  */
+void cachefiles_get_volume(struct cachefiles_volume *volume);
+void cachefiles_put_volume(struct cachefiles_volume *volume);
 void cachefiles_acquire_volume(struct fscache_volume *volume);
 void cachefiles_free_volume(struct fscache_volume *volume);
 void cachefiles_withdraw_volume(struct cachefiles_volume *volume);

@@ -22,7 +22,7 @@ static
 struct cachefiles_object *cachefiles_alloc_object(struct fscache_cookie *cookie)
 {
 	struct fscache_volume *vcookie = cookie->volume;
-	struct cachefiles_volume *volume = vcookie->cache_priv;
+	struct cachefiles_volume *volume = READ_ONCE(vcookie->cache_priv);
 	struct cachefiles_object *object;
 
 	_enter("{%s},%x,", vcookie->key, cookie->debug_id);
@@ -37,6 +37,15 @@ struct cachefiles_object *cachefiles_alloc_object(struct fscache_cookie *cookie)
 	}
 
 	refcount_set(&object->ref, 1);
+
+	/*
+	 * After enabling sync_volume_unhash, fscache_relinquish_volume() may
+	 * release cachefiles_volume while fscache_volume->ref is non-zero.
+	 * However, cachefiles_object may still access cachefiles_cache through
+	 * object->volume->cache (e.g., in cachefiles_ondemand_fd_release).
+	 * Therefore, we need to pin cachefiles_volume through the object.
+	 */
+	cachefiles_get_volume(volume);
 
 	spin_lock_init(&object->lock);
 	INIT_LIST_HEAD(&object->cache_link);
@@ -96,6 +105,7 @@ void cachefiles_put_object(struct cachefiles_object *object,
 		cachefiles_ondemand_deinit_obj_info(object);
 		cache = object->volume->cache->cache;
 		fscache_put_cookie(object->cookie, fscache_cookie_put_object);
+		cachefiles_put_volume(object->volume);
 		object->cookie = NULL;
 		kmem_cache_free(cachefiles_object_jar, object);
 		fscache_uncount_object(cache);

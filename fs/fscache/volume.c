@@ -389,10 +389,25 @@ static void fscache_unhash_volume(struct fscache_volume *volume)
 	h = &fscache_volume_hash[bucket];
 
 	hlist_bl_lock(h);
-	hlist_bl_del(&volume->hash_link);
+	hlist_bl_del_init(&volume->hash_link);
 	if (test_bit(FSCACHE_VOLUME_COLLIDED_WITH, &volume->flags))
 		fscache_wake_pending_volume(volume, h);
 	hlist_bl_unlock(h);
+}
+
+/*
+ * Clear the volume->cache_priv.
+ */
+static void fscache_clear_volume_priv(struct fscache_volume *volume)
+{
+	if (volume->cache_priv) {
+		__fscache_begin_volume_access(volume, NULL,
+					      fscache_access_relinquish_volume);
+		if (volume->cache_priv)
+			volume->cache->ops->free_volume(volume);
+		fscache_end_volume_access(volume, NULL,
+					  fscache_access_relinquish_volume_end);
+	}
 }
 
 /*
@@ -402,14 +417,7 @@ static void fscache_free_volume(struct fscache_volume *volume)
 {
 	struct fscache_cache *cache = volume->cache;
 
-	if (volume->cache_priv) {
-		__fscache_begin_volume_access(volume, NULL,
-					      fscache_access_relinquish_volume);
-		if (volume->cache_priv)
-			cache->ops->free_volume(volume);
-		fscache_end_volume_access(volume, NULL,
-					  fscache_access_relinquish_volume_end);
-	}
+	fscache_clear_volume_priv(volume);
 
 	down_write(&fscache_addremove_sem);
 	list_del_init(&volume->proc_link);
@@ -459,6 +467,24 @@ void __fscache_relinquish_volume(struct fscache_volume *volume,
 		set_bit(FSCACHE_VOLUME_INVALIDATE, &volume->flags);
 	} else if (coherency_data) {
 		memcpy(volume->coherency, coherency_data, volume->coherency_len);
+	}
+
+	if (fscache_test_sync_volume_unhash(volume->cache)) {
+		int ret = wait_var_event_killable(&volume->n_hash_cookies,
+				(atomic_read_acquire(&volume->n_hash_cookies) == 0));
+		if (ret == -ERESTARTSYS) {
+			pr_info("Waiting for unhashing has been interrupted!" \
+				"(n_hash_cookies %d)\n",
+				atomic_read(&volume->n_hash_cookies));
+		} else if (!hlist_bl_unhashed(&volume->hash_link)) {
+			/*
+			 * To ensure that the corresponding cache entries can
+			 * be created on the next mount, thereby completing
+			 * the mount successfully.
+			 */
+			fscache_clear_volume_priv(volume);
+			fscache_unhash_volume(volume);
+		}
 	}
 
 	fscache_put_volume(volume, fscache_volume_put_relinquish);
