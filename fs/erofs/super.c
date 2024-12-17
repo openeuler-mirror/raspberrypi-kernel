@@ -514,12 +514,20 @@ static int erofs_fc_parse_param(struct fs_context *fc,
 		break;
 #ifdef CONFIG_EROFS_FS_ONDEMAND
 	case Opt_fsid:
+		if (!sbi->ondemand_enabled) {
+			errorfc(fc, "fsid option not supported");
+			break;
+		}
 		kfree(sbi->fsid);
 		sbi->fsid = kstrdup(param->string, GFP_KERNEL);
 		if (!sbi->fsid)
 			return -ENOMEM;
 		break;
 	case Opt_domain_id:
+		if (!sbi->ondemand_enabled) {
+			errorfc(fc, "domain_id option not supported");
+			break;
+		}
 		kfree(sbi->domain_id);
 		sbi->domain_id = kstrdup(param->string, GFP_KERNEL);
 		if (!sbi->domain_id)
@@ -762,11 +770,16 @@ static const struct fs_context_operations erofs_context_ops = {
 	.free		= erofs_fc_free,
 };
 
+static inline bool erofs_can_init(void)
+{
+	return READ_ONCE(erofs_enabled) || cachefiles_ondemand_is_enabled();
+}
+
 static int erofs_init_fs_context(struct fs_context *fc)
 {
 	struct erofs_sb_info *sbi;
 
-	if (!READ_ONCE(erofs_enabled))
+	if (!erofs_can_init())
 		return -EOPNOTSUPP;
 
 	sbi = kzalloc(sizeof(*sbi), GFP_KERNEL);
@@ -778,6 +791,7 @@ static int erofs_init_fs_context(struct fs_context *fc)
 		kfree(sbi);
 		return -ENOMEM;
 	}
+	sbi->ondemand_enabled = cachefiles_ondemand_is_enabled();
 	fc->s_fs_info = sbi;
 
 	idr_init(&sbi->devs->tree);
