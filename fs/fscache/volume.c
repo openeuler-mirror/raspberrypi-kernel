@@ -151,18 +151,23 @@ static bool fscache_is_acquire_pending(struct fscache_volume *volume)
 	return test_bit(FSCACHE_VOLUME_ACQUIRE_PENDING, &volume->flags);
 }
 
-static void fscache_wait_on_volume_collision(struct fscache_volume *candidate,
+static int fscache_wait_on_volume_collision(struct fscache_volume *candidate,
 					     unsigned int collidee_debug_id)
 {
-	wait_on_bit_timeout(&candidate->flags, FSCACHE_VOLUME_ACQUIRE_PENDING,
-			    TASK_UNINTERRUPTIBLE, 20 * HZ);
+	int ret;
+
+	ret = wait_on_bit_timeout(&candidate->flags, FSCACHE_VOLUME_ACQUIRE_PENDING,
+				  TASK_INTERRUPTIBLE, 20 * HZ);
+	if (ret == -EINTR)
+		return ret;
 	if (fscache_is_acquire_pending(candidate)) {
 		pr_notice("Potential volume collision new=%08x old=%08x",
 			  candidate->debug_id, collidee_debug_id);
 		fscache_stat(&fscache_n_volumes_collision);
-		wait_on_bit(&candidate->flags, FSCACHE_VOLUME_ACQUIRE_PENDING,
-			    TASK_UNINTERRUPTIBLE);
+		return wait_on_bit(&candidate->flags, FSCACHE_VOLUME_ACQUIRE_PENDING,
+				   TASK_INTERRUPTIBLE);
 	}
+	return 0;
 }
 
 /*
@@ -183,8 +188,10 @@ static bool fscache_hash_volume(struct fscache_volume *candidate)
 	hlist_bl_lock(h);
 	hlist_bl_for_each_entry(cursor, p, h, hash_link) {
 		if (fscache_volume_same(candidate, cursor)) {
-			if (!test_bit(FSCACHE_VOLUME_RELINQUISHED, &cursor->flags))
+			if (!test_bit(FSCACHE_VOLUME_RELINQUISHED, &cursor->flags)) {
+				fscache_see_volume(cursor, fscache_volume_collision);
 				goto collision;
+			}
 			fscache_see_volume(cursor, fscache_volume_get_hash_collision);
 			set_bit(FSCACHE_VOLUME_COLLIDED_WITH, &cursor->flags);
 			set_bit(FSCACHE_VOLUME_ACQUIRE_PENDING, &candidate->flags);
@@ -196,12 +203,16 @@ static bool fscache_hash_volume(struct fscache_volume *candidate)
 	hlist_bl_add_head(&candidate->hash_link, h);
 	hlist_bl_unlock(h);
 
-	if (fscache_is_acquire_pending(candidate))
-		fscache_wait_on_volume_collision(candidate, collidee_debug_id);
+	if (fscache_is_acquire_pending(candidate) &&
+	    fscache_wait_on_volume_collision(candidate, collidee_debug_id)) {
+		hlist_bl_lock(h);
+		hlist_bl_del_init(&candidate->hash_link);
+		pr_err("Wait duplicate volume unhashed interrupted\n");
+		goto collision;
+	}
 	return true;
 
 collision:
-	fscache_see_volume(cursor, fscache_volume_collision);
 	hlist_bl_unlock(h);
 	return false;
 }
