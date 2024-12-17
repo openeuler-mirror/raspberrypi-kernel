@@ -111,7 +111,10 @@ static void __cachefiles_free_volume(struct cachefiles_volume *volume)
 
 	_enter("");
 
-	volume->vcookie->cache_priv = NULL;
+	if (volume->dir_has_put)
+		return;
+
+	volume->dir_has_put = true;
 
 	for (i = 0; i < 256; i++)
 		cachefiles_put_directory(volume->fanout[i]);
@@ -123,12 +126,11 @@ void cachefiles_free_volume(struct fscache_volume *vcookie)
 {
 	struct cachefiles_volume *volume = vcookie->cache_priv;
 
-	if (volume) {
-		spin_lock(&volume->cache->object_list_lock);
-		list_del_init(&volume->cache_link);
-		spin_unlock(&volume->cache->object_list_lock);
-		__cachefiles_free_volume(volume);
-	}
+	spin_lock(&volume->cache->object_list_lock);
+	list_del_init(&volume->cache_link);
+	spin_unlock(&volume->cache->object_list_lock);
+	vcookie->cache_priv = NULL;
+	__cachefiles_free_volume(volume);
 }
 
 void cachefiles_withdraw_volume(struct cachefiles_volume *volume)

@@ -40,6 +40,7 @@ struct cachefiles_volume {
 	struct cachefiles_cache		*cache;
 	struct list_head		cache_link;	/* Link in cache->volumes */
 	struct fscache_volume		*vcookie;	/* The netfs's representation */
+	bool				dir_has_put;	/* Indicates cache dir has been put */
 	struct dentry			*dentry;	/* The volume dentry */
 	struct dentry			*fanout[256];	/* Fanout subdirs */
 };
