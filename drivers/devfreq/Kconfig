@@ -150,6 +150,12 @@ config ARM_SUN8I_A33_MBUS_DEVFREQ
 	  This adds the DEVFREQ driver for the MBUS controller in some
 	  Allwinner sun8i (A33 through H3) and sun50i (A64 and H5) SoCs.
 
+config ARM_HISI_UNCORE_DEVFREQ
+	tristate "HiSilicon uncore DEVFREQ Driver"
+	depends on (PCC && ACPI && ACPI_PPTT) || COMPILE_TEST
+	help
+	  HiSilicon uncore DEVFREQ Driver
+
 source "drivers/devfreq/event/Kconfig"
 
 endif # PM_DEVFREQ
