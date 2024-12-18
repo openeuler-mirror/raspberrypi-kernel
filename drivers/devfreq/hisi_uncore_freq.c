@@ -38,6 +38,7 @@ struct hisi_uncore_freq {
 	unsigned long freq_max;
 	unsigned long freq_step;
 	struct devfreq *devfreq;
+	int related_package;
 	struct cpumask related_cpus;
 };
 
@@ -410,6 +411,30 @@ static ssize_t related_cpus_show(struct device *dev,
 }
 DEVICE_ATTR_RO(related_cpus);
 
+static int get_related_package(struct hisi_uncore_freq *uncore)
+{
+	int rc;
+
+	rc = device_property_read_u32(uncore->dev, "related-package",
+									 &uncore->related_package);
+	if (rc) {
+		dev_err(uncore->dev, "failed to read related-package property\n");
+		return rc;
+	}
+
+	return 0;
+}
+
+static ssize_t related_package_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev->parent);
+	struct hisi_uncore_freq *uncore = platform_get_drvdata(pdev);
+
+	return sprintf(buf, "%u\n", uncore->related_package);
+}
+DEVICE_ATTR_RO(related_package);
+
 static int hisi_uncore_probe(struct platform_device *pdev)
 {
 	struct hisi_uncore_freq *uncore;
@@ -440,9 +465,19 @@ static int hisi_uncore_probe(struct platform_device *pdev)
 		goto err_free_opp;
 	}
 
+	rc = get_related_package(uncore);
+	if (rc)
+		goto err_free_opp;
+
 	hisi_uncore_mark_related_cpus_wrap(uncore);
 
 	rc = device_create_file(&uncore->devfreq->dev, &dev_attr_related_cpus);
+	if (rc) {
+		dev_err(&pdev->dev, "Failed to create custom sysfs files\n");
+		goto err_free_opp;
+	}
+
+	rc = device_create_file(&uncore->devfreq->dev, &dev_attr_related_package);
 	if (rc) {
 		dev_err(&pdev->dev, "Failed to create custom sysfs files\n");
 		goto err_free_opp;
@@ -467,6 +502,7 @@ static int hisi_uncore_remove(struct platform_device *pdev)
 	hisi_uncore_remove_opp(uncore);
 	hisi_uncore_free_pcc_chan(uncore);
 	device_remove_file(&uncore->devfreq->dev, &dev_attr_related_cpus);
+	device_remove_file(&uncore->devfreq->dev, &dev_attr_related_package);
 
 	return 0;
 }
