@@ -306,7 +306,8 @@ static int hisi_uncore_devfreq_register(struct hisi_uncore_freq *uncore)
 		return -ENOMEM;
 
 	profile->initial_freq = (unsigned long)data * HZ_PER_MHZ;
-	profile->polling_ms = 100;
+	profile->polling_ms = 1000;
+	profile->timer = DEVFREQ_TIMER_DELAYED;
 	profile->target = hisi_uncore_target;
 	profile->get_dev_status = hisi_uncore_get_dev_status;
 	profile->get_cur_freq = hisi_uncore_get_cur_freq;
