@@ -6576,6 +6576,15 @@ struct bpf_link_info {
 					__u64 config;
 					__u32 type;
 				} event; /* BPF_PERF_EVENT_EVENT */
+				struct {
+					__u64:64;
+					__u32:32;
+					__u32:32;
+					__u64:64;
+					__u64:64;
+					__u64:64;
+					__u64:64;
+				} kabi_reserve;
 			};
 		} perf_event;
 		struct {
