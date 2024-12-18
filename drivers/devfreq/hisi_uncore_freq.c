@@ -240,6 +240,28 @@ static int hisi_uncore_target(struct device *dev, unsigned long *freq,
 static int hisi_uncore_get_dev_status(struct device *dev,
 				      struct devfreq_dev_status *stat)
 {
+	int rc, i, ratio;
+	struct related_event *event;
+	struct devfreq_event_data edata;
+	struct hisi_uncore_freq *uncore = dev_get_drvdata(dev);
+
+	ratio = 0;
+	for (i = 0; i < uncore->related_event_cnt; ++i) {
+		event = &uncore->related_events[i];
+		event->edev = devfreq_event_get_edev_by_dev(&event->pdev->dev);
+		if (!event->edev)
+			continue;
+		rc = devfreq_event_get_event(event->edev, &edata);
+		if (rc)
+			return rc;
+
+		if (ratio <= edata.load_count * 1000 / edata.total_count) {
+			stat->busy_time = edata.load_count;
+			stat->total_time = edata.total_count;
+			ratio = edata.load_count * 1000 / edata.total_count;
+		}
+	}
+
 	return 0;
 }
 
@@ -466,13 +488,6 @@ static int creat_related_event(struct hisi_uncore_freq *uncore, char *name)
 	if (IS_ERR(event->pdev))
 			return PTR_ERR(event->pdev);
 
-	event->edev = devfreq_event_get_edev_by_dev(&event->pdev->dev);
-	if (event->edev) {
-		dev_err(&event->pdev->dev, "devfreq event dev do not added\n");
-		platform_device_unregister(event->pdev);
-		return -ENODEV;
-	}
-
 	strncpy(event->name, name, strlen(name));
 
 	return 0;
@@ -483,6 +498,7 @@ static void remove_related_event(struct hisi_uncore_freq *uncore)
 	int i;
 	struct related_event *event;
 
+	devfreq_suspend_device(uncore->devfreq);
 	for (i = 0; i < uncore->related_event_cnt; ++i) {
 		event = &uncore->related_events[i];
 		event->edev = NULL;
@@ -537,6 +553,8 @@ static ssize_t related_events_store(struct device *dev,
 		}
 		uncore->related_event_cnt++;
 	}
+
+	devfreq_resume_device(uncore->devfreq);
 
 	kfree(item);
 	return count;
