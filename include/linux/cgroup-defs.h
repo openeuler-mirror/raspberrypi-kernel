@@ -325,6 +325,8 @@ struct cgroup_base_stat {
 #ifdef CONFIG_SCHED_CORE
 	u64 forceidle_sum;
 #endif
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /*
@@ -555,6 +557,9 @@ struct cgroup {
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 	/* All ancestors including self */
 	struct cgroup *ancestors[];
 };
@@ -606,6 +611,8 @@ struct cgroup_root {
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
 };
 
 /*
