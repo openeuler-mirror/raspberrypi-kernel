@@ -573,6 +573,10 @@ struct cgroup_root {
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
 
+	/* A list running through the active hierarchies */
+	struct list_head root_list;
+	struct rcu_head rcu;    /* Must be near the top */
+
 	/*
 	 * The root cgroup. The containing cgroup_root will be destroyed on its
 	 * release. cgrp->ancestors[0] will be used overflowing into the
@@ -588,10 +592,6 @@ struct cgroup_root {
 
 	/* Wait while cgroups are being destroyed */
 	wait_queue_head_t wait;
-
-	/* A list running through the active hierarchies */
-	struct list_head root_list;
-	struct rcu_head rcu;
 
 	/* Hierarchy-specific flags */
 	unsigned int flags;
