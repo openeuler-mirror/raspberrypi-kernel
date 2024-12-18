@@ -294,6 +294,8 @@ struct xfrm_state {
 
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static inline struct net *xs_net(struct xfrm_state *x)
@@ -562,6 +564,8 @@ struct xfrm_policy {
 
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 static inline struct net *xp_net(const struct xfrm_policy *xp)
