@@ -30,7 +30,7 @@
 #define DEF_OPP_VOLT_UV	1000000
 
 #define RELATED_EVENT_MAX_CNT	4
-#define RELATED_EVENT_NAME_LEN	10
+#define RELATED_EVENT_NAME_LEN	20
 
 struct related_event {
 	char name[RELATED_EVENT_NAME_LEN];
@@ -286,6 +286,7 @@ static int hisi_uncore_get_cur_freq(struct device *dev, unsigned long *freq)
 static int hisi_uncore_add_opp(struct hisi_uncore_freq *uncore)
 {
 	unsigned long freq_mhz;
+	unsigned long freq_curr;
 	u32 data;
 	int rc;
 
@@ -308,9 +309,9 @@ static int hisi_uncore_add_opp(struct hisi_uncore_freq *uncore)
 	     freq_mhz += uncore->freq_step) {
 		rc = dev_pm_opp_add(uncore->dev, freq_mhz * HZ_PER_MHZ, DEF_OPP_VOLT_UV);
 		if (rc) {
-			unsigned long freq_curr = freq_mhz;
+			freq_curr = freq_mhz;
 			dev_err(uncore->dev, "Add OPP %lu failed (%d)\n",
-				freq_mhz, rc);
+				 freq_mhz, rc);
 			for (freq_mhz = uncore->freq_min; freq_mhz < freq_curr;
 			     freq_mhz += uncore->freq_step)
 				dev_pm_opp_remove(uncore->dev,
@@ -481,10 +482,10 @@ static int creat_related_event(struct hisi_uncore_freq *uncore, char *name)
 	struct related_event *event;
 	char dev_name[RELATED_EVENT_NAME_LEN + 10];
 
+	sprintf(dev_name, "%s-%s", "EVT-UNCORE", name);
 	evt_id = uncore->related_event_cnt;
 	event = &uncore->related_events[evt_id];
 
-	sprintf(dev_name, "%s-%s", "EVT-UNCORE", name);
 	event->pdev = platform_device_register_data(
 					 uncore->dev,
 					 dev_name,
@@ -492,7 +493,7 @@ static int creat_related_event(struct hisi_uncore_freq *uncore, char *name)
 					 NULL,
 					 0);
 	if (IS_ERR(event->pdev))
-			return PTR_ERR(event->pdev);
+		return PTR_ERR(event->pdev);
 
 	strncpy(event->name, name, strlen(name));
 
@@ -573,9 +574,9 @@ static ssize_t related_events_show(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev->parent);
 	struct hisi_uncore_freq *uncore = platform_get_drvdata(pdev);
 
-	for (evt_id = 0; evt_id < uncore->related_event_cnt; ++evt_id) {
+	for (evt_id = 0; evt_id < uncore->related_event_cnt; ++evt_id)
 		sprintf(buf, "%s %s", buf, uncore->related_events[evt_id].name);
-	}
+
 	return sprintf(buf, "%s\n", buf);
 }
 DEVICE_ATTR_RW(related_events);
@@ -677,4 +678,4 @@ module_platform_driver(hisi_uncore_platdrv);
 
 MODULE_DESCRIPTION("HiSilicon uncore frequency scaling driver");
 MODULE_AUTHOR("Jie Zhan <zhanjie9@hisilicon.com>");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

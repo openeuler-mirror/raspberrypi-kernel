@@ -280,9 +280,8 @@ struct devfreq_event_dev *devfreq_event_get_edev_by_dev(struct device *dev)
 out:
 	mutex_unlock(&devfreq_event_list_lock);
 
-	if (!edev) {
+	if (!edev)
 		return ERR_PTR(-ENODEV);
-	}
 
 	return edev;
 }

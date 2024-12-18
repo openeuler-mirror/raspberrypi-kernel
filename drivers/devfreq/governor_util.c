@@ -32,16 +32,15 @@ static int devfreq_util_func(struct devfreq *df,
 
 	stat = &df->last_status;
 
-	if (data) {
+	if (data)
 		dful_val = data->dful_val;
-	}
 
 	if (dful_val > 100)
 		return -EINVAL;
 
 	/* Assume MAX if it is going to be divided by zero */
 	if (stat->total_time == 0) {
-		*freq = df->scaling_max_freq;;
+		*freq = df->scaling_max_freq;
 		return 0;
 	}
 
@@ -120,8 +119,7 @@ static void __exit devfreq_util_exit(void)
 	ret = devfreq_remove_governor(&devfreq_util);
 	if (ret)
 		pr_err("%s: failed remove governor %d\n", __func__, ret);
-
-	return;
 }
+
 module_exit(devfreq_util_exit);
 MODULE_LICENSE("GPL");

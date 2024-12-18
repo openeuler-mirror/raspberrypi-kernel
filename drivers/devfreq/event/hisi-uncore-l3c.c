@@ -26,7 +26,7 @@ static int l3c_get_events(struct devfreq_event_dev *edev, struct devfreq_event_d
 	u64 load;
 	int p0, p1, p2;
 	static u64 last_load;
-	static int period = 0;
+	static int period;
 
 	struct hisi_uncore_event_info *info = devfreq_event_get_drvdata(edev);
 
@@ -47,15 +47,14 @@ static int l3c_get_events(struct devfreq_event_dev *edev, struct devfreq_event_d
 		return 0;
 	}
 
-	if (period == CORRECT_PERIOD) {
+	if (period >= CORRECT_PERIOD) {
 		period = 0;
 		p0 = last_load * 100 / load;
 		p1 = last_load * 100 / info->max_load;
 		p2 = load * 100 / info->max_load;
 
-		if (p2 > p1 && p1 > 0 && p2 * 105 / p1 < 100 * 100 / p0) {
+		if (p2 > p1 && p1 > 0 && p2 * 105 / p1 < 100 * 100 / p0)
 			info->max_load = load;
-		}
 	}
 
 	info->max_load = max(info->max_load, load);
@@ -155,6 +154,6 @@ struct platform_driver hisi_l3c_event_driver = {
 
 module_platform_driver(hisi_l3c_event_driver);
 
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Xiangwei Li <liwei728@huawei.com>");
 MODULE_DESCRIPTION("Hisi uncore l3c pmu events driver");

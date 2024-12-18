@@ -21,10 +21,10 @@
 	len; })
 
 #define HISI_UNCORE_EVENT_TYPE_ATTR		  \
-			DEVICE_ATTR_RW(hisi_uncore_event_types);
+			DEVICE_ATTR_RW(hisi_uncore_event_types)
 
 #define HISI_UNCORE_EVENT_CONFIG_ATTR		  \
-			DEVICE_ATTR_RW(hisi_uncore_event_configs);
+			DEVICE_ATTR_RW(hisi_uncore_event_configs)
 
 #define EVENT_TYPE_MAX_CNT			(20)
 #define EVENT_TYPE_INVALID_VAL		(0xffff)
