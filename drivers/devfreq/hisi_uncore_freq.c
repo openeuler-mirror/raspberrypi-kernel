@@ -20,6 +20,7 @@
 #include <linux/pm_opp.h>
 #include <linux/property.h>
 #include <linux/topology.h>
+#include <linux/devfreq-event.h>
 
 #include <acpi/pcc.h>
 
@@ -27,6 +28,15 @@
 
 /* Don't care OPP votlage, take 1V as default */
 #define DEF_OPP_VOLT_UV	1000000
+
+#define RELATED_EVENT_MAX_CNT	4
+#define RELATED_EVENT_NAME_LEN	10
+
+struct related_event {
+	char name[RELATED_EVENT_NAME_LEN];
+	struct platform_device *pdev;
+	struct devfreq_event_dev *edev;
+};
 
 struct hisi_uncore_freq {
 	struct device *dev;
@@ -40,6 +50,8 @@ struct hisi_uncore_freq {
 	struct devfreq *devfreq;
 	int related_package;
 	struct cpumask related_cpus;
+	int related_event_cnt;
+	struct related_event related_events[RELATED_EVENT_MAX_CNT];
 };
 
 struct hisi_uncore_pcc_data {
@@ -435,6 +447,115 @@ static ssize_t related_package_show(struct device *dev,
 }
 DEVICE_ATTR_RO(related_package);
 
+static int creat_related_event(struct hisi_uncore_freq *uncore, char *name)
+{
+	int evt_id;
+	struct related_event *event;
+	char dev_name[RELATED_EVENT_NAME_LEN + 10];
+
+	evt_id = uncore->related_event_cnt;
+	event = &uncore->related_events[evt_id];
+
+	sprintf(dev_name, "%s-%s", "EVT-UNCORE", name);
+	event->pdev = platform_device_register_data(
+					 uncore->dev,
+					 dev_name,
+					 uncore->related_package,
+					 NULL,
+					 0);
+	if (IS_ERR(event->pdev))
+			return PTR_ERR(event->pdev);
+
+	event->edev = devfreq_event_get_edev_by_dev(&event->pdev->dev);
+	if (event->edev) {
+		dev_err(&event->pdev->dev, "devfreq event dev do not added\n");
+		platform_device_unregister(event->pdev);
+		return -ENODEV;
+	}
+
+	strncpy(event->name, name, strlen(name));
+
+	return 0;
+}
+
+static void remove_related_event(struct hisi_uncore_freq *uncore)
+{
+	int i;
+	struct related_event *event;
+
+	for (i = 0; i < uncore->related_event_cnt; ++i) {
+		event = &uncore->related_events[i];
+		event->edev = NULL;
+		memset(event->name, 0, RELATED_EVENT_NAME_LEN);
+		platform_device_unregister(event->pdev);
+	}
+
+	uncore->related_event_cnt = 0;
+
+	return;
+}
+
+static ssize_t related_events_store(struct device *dev,
+						 struct device_attribute *attr,
+						 const char *buf, size_t count)
+{
+	int err;
+	char *item;
+	u32 head, tail;
+	struct platform_device *pdev = to_platform_device(dev->parent);
+	struct hisi_uncore_freq *uncore = platform_get_drvdata(pdev);
+
+	if (!buf)
+		return 0;
+
+	remove_related_event(uncore);
+
+	head = 0;
+	item = kcalloc(count + 1, sizeof(*item), GFP_KERNEL);
+	if (!item)
+		return -ENOMEM;
+
+	while (uncore->related_event_cnt < RELATED_EVENT_MAX_CNT) {
+		while (head < count && isspace(buf[head]))
+			head++;
+
+		if (!isalnum(buf[head]))
+			break;
+
+		tail = head + 1;
+		while (tail < count && isalnum(buf[tail]))
+			tail++;
+
+		strncpy(item, buf + head, tail - head);
+		item[tail - head] = '\0';
+		head = tail;
+
+		err = creat_related_event(uncore, item);
+		if (err) {
+			kfree(item);
+			return err;
+		}
+		uncore->related_event_cnt++;
+	}
+
+	kfree(item);
+	return count;
+}
+
+static ssize_t related_events_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	int evt_id;
+	struct platform_device *pdev = to_platform_device(dev->parent);
+	struct hisi_uncore_freq *uncore = platform_get_drvdata(pdev);
+
+	for (evt_id = 0; evt_id < uncore->related_event_cnt; ++evt_id) {
+		sprintf(buf, "%s %s", buf, uncore->related_events[evt_id].name);
+	}
+	return sprintf(buf, "%s\n", buf);
+}
+DEVICE_ATTR_RW(related_events);
+
 static int hisi_uncore_probe(struct platform_device *pdev)
 {
 	struct hisi_uncore_freq *uncore;
@@ -483,6 +604,12 @@ static int hisi_uncore_probe(struct platform_device *pdev)
 		goto err_free_opp;
 	}
 
+	rc = device_create_file(&uncore->devfreq->dev, &dev_attr_related_events);
+	if (rc) {
+		dev_err(&pdev->dev, "Failed to create custom sysfs files\n");
+		goto err_free_opp;
+	}
+
 	return 0;
 
 err_free_opp:
@@ -501,6 +628,7 @@ static int hisi_uncore_remove(struct platform_device *pdev)
 
 	hisi_uncore_remove_opp(uncore);
 	hisi_uncore_free_pcc_chan(uncore);
+	remove_related_event(uncore);
 	device_remove_file(&uncore->devfreq->dev, &dev_attr_related_cpus);
 	device_remove_file(&uncore->devfreq->dev, &dev_attr_related_package);
 
