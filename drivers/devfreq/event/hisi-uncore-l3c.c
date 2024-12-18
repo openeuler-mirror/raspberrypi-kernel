@@ -16,12 +16,18 @@
 
 #include "hisi-uncore.h"
 
-HISI_UNCORE_EVENT_TYPE_ATTR;
-HISI_UNCORE_EVENT_CONFIG_ATTR;
+#define CORRECT_PERIOD		11
+
+static HISI_UNCORE_EVENT_TYPE_ATTR;
+static HISI_UNCORE_EVENT_CONFIG_ATTR;
 
 static int l3c_get_events(struct devfreq_event_dev *edev, struct devfreq_event_data *edata)
 {
 	u64 load;
+	int p0, p1, p2;
+	static u64 last_load;
+	static int period = 0;
+
 	struct hisi_uncore_event_info *info = devfreq_event_get_drvdata(edev);
 
 	load = get_pmu_monitor_status(info);
@@ -29,7 +35,27 @@ static int l3c_get_events(struct devfreq_event_dev *edev, struct devfreq_event_d
 	if (info->is_reset) {
 		info->is_reset = false;
 		info->max_load = 0;
+		period = 0;
 		return 0;
+	}
+
+	period++;
+	if (period == CORRECT_PERIOD - 1) {
+		edata->load_count = info->max_load;
+		edata->total_count = info->max_load;
+		last_load = load;
+		return 0;
+	}
+
+	if (period == CORRECT_PERIOD) {
+		period = 0;
+		p0 = last_load * 100 / load;
+		p1 = last_load * 100 / info->max_load;
+		p2 = load * 100 / info->max_load;
+
+		if (p2 > p1 && p1 > 0 && p2 * 105 / p1 < 100 * 100 / p0) {
+			info->max_load = load;
+		}
 	}
 
 	info->max_load = max(info->max_load, load);

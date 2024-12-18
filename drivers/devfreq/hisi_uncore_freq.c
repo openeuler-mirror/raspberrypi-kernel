@@ -255,10 +255,16 @@ static int hisi_uncore_get_dev_status(struct device *dev,
 		if (rc)
 			return rc;
 
-		if (ratio <= edata.load_count * 1000 / edata.total_count) {
+		if (edata.load_count == edata.total_count) {
 			stat->busy_time = edata.load_count;
 			stat->total_time = edata.total_count;
-			ratio = edata.load_count * 1000 / edata.total_count;
+			return 0;
+		}
+
+		if (ratio <= edata.load_count * 100 / edata.total_count) {
+			stat->busy_time = edata.load_count;
+			stat->total_time = edata.total_count;
+			ratio = edata.load_count * 100 / edata.total_count;
 		}
 	}
 
