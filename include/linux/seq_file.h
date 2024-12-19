@@ -27,6 +27,8 @@ struct seq_file {
 	int poll_event;
 	const struct file *file;
 	void *private;
+
+	KABI_RESERVE(1)
 };
 
 struct seq_operations {
@@ -34,6 +36,8 @@ struct seq_operations {
 	void (*stop) (struct seq_file *m, void *v);
 	void * (*next) (struct seq_file *m, void *v, loff_t *pos);
 	int (*show) (struct seq_file *m, void *v);
+
+	KABI_RESERVE(1)
 };
 
 #define SEQ_SKIP 1
