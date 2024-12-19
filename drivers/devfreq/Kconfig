@@ -73,6 +73,12 @@ config DEVFREQ_GOV_PASSIVE
 	  through sysfs entries. The passive governor recommends that
 	  devfreq device uses the OPP table to get the frequency/voltage.
 
+config DEVFREQ_GOV_UTIL
+	tristate "Util"
+	help
+	  This governor Adjust the frequency based on the load utilization
+	  rate.
+
 comment "DEVFREQ Drivers"
 
 config ARM_EXYNOS_BUS_DEVFREQ
@@ -149,6 +155,12 @@ config ARM_SUN8I_A33_MBUS_DEVFREQ
 	help
 	  This adds the DEVFREQ driver for the MBUS controller in some
 	  Allwinner sun8i (A33 through H3) and sun50i (A64 and H5) SoCs.
+
+config ARM_HISI_UNCORE_DEVFREQ
+	tristate "HiSilicon uncore DEVFREQ Driver"
+	depends on (PCC && ACPI && ACPI_PPTT) || COMPILE_TEST
+	help
+	  HiSilicon uncore DEVFREQ Driver
 
 source "drivers/devfreq/event/Kconfig"
 

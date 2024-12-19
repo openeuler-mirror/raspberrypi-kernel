@@ -257,6 +257,37 @@ out:
 EXPORT_SYMBOL_GPL(devfreq_event_get_edev_by_phandle);
 
 /**
+ * devfreq_event_get_edev_by_dev() - Get the devfreq-event dev from
+ *					 specified device.
+ * @dev		: the pointer to the given device
+ *
+ * Note that this function return the pointer of devfreq-event device.
+ */
+struct devfreq_event_dev *devfreq_event_get_edev_by_dev(struct device *dev)
+{
+	struct devfreq_event_dev *edev;
+
+	if (!dev)
+		return ERR_PTR(-EINVAL);
+
+	mutex_lock(&devfreq_event_list_lock);
+	list_for_each_entry(edev, &devfreq_event_list, node) {
+		if (edev->dev.parent == dev)
+			goto out;
+	}
+
+	edev = NULL;
+out:
+	mutex_unlock(&devfreq_event_list_lock);
+
+	if (!edev)
+		return ERR_PTR(-ENODEV);
+
+	return edev;
+}
+EXPORT_SYMBOL_GPL(devfreq_event_get_edev_by_dev);
+
+/**
  * devfreq_event_get_edev_count() - Get the count of devfreq-event dev
  * @dev		: the pointer to the given device
  * @phandle_name: name of property holding a phandle value
@@ -328,7 +359,8 @@ struct devfreq_event_dev *devfreq_event_add_edev(struct device *dev,
 	edev->dev.class = devfreq_event_class;
 	edev->dev.release = devfreq_event_release_edev;
 
-	dev_set_name(&edev->dev, "event%d", atomic_inc_return(&event_no));
+	dev_set_name(&edev->dev, "event-%s-%d",
+			 desc->name, atomic_inc_return(&event_no));
 	ret = device_register(&edev->dev);
 	if (ret < 0) {
 		put_device(&edev->dev);
