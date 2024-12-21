@@ -5,6 +5,7 @@
 #include <linux/hardirq.h>
 #include <linux/uaccess.h>
 #include <linux/refcount.h>
+#include <linux/kabi.h>
 
 /* Buffer handling */
 
@@ -53,6 +54,15 @@ struct perf_buffer {
 	int				aux_in_sampling;
 	void				**aux_pages;
 	void				*aux_priv;
+
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 
 	struct perf_event_mmap_page	*user_page;
 	void				*data_pages[];
