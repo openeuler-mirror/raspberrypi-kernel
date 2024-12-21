@@ -790,10 +790,10 @@ static int amd_uncore_l3_event_init(struct perf_event *event)
 	else if (boot_cpu_data.x86_vendor == X86_VENDOR_HYGON &&
 		 boot_cpu_data.x86 == 0x18) {
 		if (boot_cpu_data.x86_model >= 0x6 && boot_cpu_data.x86_model <= 0xf)
-			return ((config & HYGON_L3_SLICE_MASK) ? : HYGON_L3_SLICE_MASK) |
+			mask = ((config & HYGON_L3_SLICE_MASK) ? : HYGON_L3_SLICE_MASK) |
 			       ((config & HYGON_L3_THREAD_MASK) ? : HYGON_L3_THREAD_MASK);
 		else
-			return ((config & AMD64_L3_SLICE_MASK) ? : AMD64_L3_SLICE_MASK) |
+			mask = ((config & AMD64_L3_SLICE_MASK) ? : AMD64_L3_SLICE_MASK) |
 			       ((config & AMD64_L3_THREAD_MASK) ? : AMD64_L3_THREAD_MASK);
 	}
 
