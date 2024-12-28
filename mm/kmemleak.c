@@ -583,6 +583,19 @@ static void __remove_object(struct kmemleak_object *object)
 	object->del_state |= DELSTATE_REMOVED;
 }
 
+static struct kmemleak_object *__find_and_remove_object(unsigned long ptr,
+							int alias,
+							bool is_phys)
+{
+	struct kmemleak_object *object;
+
+	object = __lookup_object(ptr, alias, is_phys);
+	if (object)
+		__remove_object(object);
+
+	return object;
+}
+
 /*
  * Look up an object in the object search tree and remove it from both
  * object_tree_root (or object_phys_tree_root) and object_list. The
@@ -596,9 +609,7 @@ static struct kmemleak_object *find_and_remove_object(unsigned long ptr, int ali
 	struct kmemleak_object *object;
 
 	raw_spin_lock_irqsave(&kmemleak_lock, flags);
-	object = __lookup_object(ptr, alias, is_phys);
-	if (object)
-		__remove_object(object);
+	object = __find_and_remove_object(ptr, alias, is_phys);
 	raw_spin_unlock_irqrestore(&kmemleak_lock, flags);
 
 	return object;
@@ -623,25 +634,15 @@ static noinline depot_stack_handle_t set_track_prepare(void)
 	return trace_handle;
 }
 
-/*
- * Create the metadata (struct kmemleak_object) corresponding to an allocated
- * memory block and add it to the object_list and object_tree_root (or
- * object_phys_tree_root).
- */
-static void __create_object(unsigned long ptr, size_t size,
-			    int min_count, gfp_t gfp, bool is_phys)
+static struct kmemleak_object *__alloc_object(gfp_t gfp)
 {
-	unsigned long flags;
-	struct kmemleak_object *object, *parent;
-	struct rb_node **link, *rb_parent;
-	unsigned long untagged_ptr;
-	unsigned long untagged_objp;
+	struct kmemleak_object *object;
 
 	object = mem_pool_alloc(gfp);
 	if (!object) {
 		pr_warn("Cannot allocate a kmemleak_object structure\n");
 		kmemleak_disable();
-		return;
+		return NULL;
 	}
 
 	INIT_LIST_HEAD(&object->object_list);
@@ -649,13 +650,8 @@ static void __create_object(unsigned long ptr, size_t size,
 	INIT_HLIST_HEAD(&object->area_list);
 	raw_spin_lock_init(&object->lock);
 	atomic_set(&object->use_count, 1);
-	object->flags = OBJECT_ALLOCATED | (is_phys ? OBJECT_PHYS : 0);
-	object->pointer = ptr;
-	object->size = kfence_ksize((void *)ptr) ?: size;
 	object->excess_ref = 0;
-	object->min_count = min_count;
 	object->count = 0;			/* white color initially */
-	object->jiffies = jiffies;
 	object->checksum = 0;
 	object->del_state = 0;
 
@@ -680,7 +676,23 @@ static void __create_object(unsigned long ptr, size_t size,
 	/* kernel backtrace */
 	object->trace_handle = set_track_prepare();
 
-	raw_spin_lock_irqsave(&kmemleak_lock, flags);
+	return object;
+}
+
+static int __link_object(struct kmemleak_object *object, unsigned long ptr,
+			 size_t size, int min_count, bool is_phys)
+{
+
+	struct kmemleak_object *parent;
+	struct rb_node **link, *rb_parent;
+	unsigned long untagged_ptr;
+	unsigned long untagged_objp;
+
+	object->flags = OBJECT_ALLOCATED | (is_phys ? OBJECT_PHYS : 0);
+	object->pointer = ptr;
+	object->size = kfence_ksize((void *)ptr) ?: size;
+	object->min_count = min_count;
+	object->jiffies = jiffies;
 
 	untagged_ptr = (unsigned long)kasan_reset_tag((void *)ptr);
 	/*
@@ -710,16 +722,38 @@ static void __create_object(unsigned long ptr, size_t size,
 			 * be freed while the kmemleak_lock is held.
 			 */
 			dump_object_info(parent);
-			kmem_cache_free(object_cache, object);
-			goto out;
+			return -EEXIST;
 		}
 	}
 	rb_link_node(&object->rb_node, rb_parent, link);
 	rb_insert_color(&object->rb_node, is_phys ? &object_phys_tree_root :
 					  &object_tree_root);
 	list_add_tail_rcu(&object->object_list, &object_list);
-out:
+
+	return 0;
+}
+
+/*
+ * Create the metadata (struct kmemleak_object) corresponding to an allocated
+ * memory block and add it to the object_list and object_tree_root (or
+ * object_phys_tree_root).
+ */
+static void __create_object(unsigned long ptr, size_t size,
+				int min_count, gfp_t gfp, bool is_phys)
+{
+	struct kmemleak_object *object;
+	unsigned long flags;
+	int ret;
+
+	object = __alloc_object(gfp);
+	if (!object)
+		return;
+
+	raw_spin_lock_irqsave(&kmemleak_lock, flags);
+	ret = __link_object(object, ptr, size, min_count, is_phys);
 	raw_spin_unlock_irqrestore(&kmemleak_lock, flags);
+	if (ret)
+		mem_pool_free(object);
 }
 
 /* Create kmemleak object which allocated with virtual address. */
@@ -782,16 +816,25 @@ static void delete_object_full(unsigned long ptr)
  */
 static void delete_object_part(unsigned long ptr, size_t size, bool is_phys)
 {
-	struct kmemleak_object *object;
-	unsigned long start, end;
+	struct kmemleak_object *object, *object_l, *object_r;
+	unsigned long start, end, flags;
 
-	object = find_and_remove_object(ptr, 1, is_phys);
+	object_l = __alloc_object(GFP_KERNEL);
+	if (!object_l)
+		return;
+
+	object_r = __alloc_object(GFP_KERNEL);
+	if (!object_r)
+		goto out;
+
+	raw_spin_lock_irqsave(&kmemleak_lock, flags);
+	object = __find_and_remove_object(ptr, 1, is_phys);
 	if (!object) {
 #ifdef DEBUG
 		kmemleak_warn("Partially freeing unknown object at 0x%08lx (size %zu)\n",
 			      ptr, size);
 #endif
-		return;
+		goto unlock;
 	}
 
 	/*
@@ -801,14 +844,25 @@ static void delete_object_part(unsigned long ptr, size_t size, bool is_phys)
 	 */
 	start = object->pointer;
 	end = object->pointer + object->size;
-	if (ptr > start)
-		__create_object(start, ptr - start, object->min_count,
-			      GFP_KERNEL, is_phys);
-	if (ptr + size < end)
-		__create_object(ptr + size, end - ptr - size, object->min_count,
-			      GFP_KERNEL, is_phys);
+	if ((ptr > start) &&
+	    !__link_object(object_l, start, ptr - start,
+			   object->min_count, is_phys))
+		object_l = NULL;
+	if ((ptr + size < end) &&
+	    !__link_object(object_r, ptr + size, end - ptr - size,
+			   object->min_count, is_phys))
+		object_r = NULL;
 
-	__delete_object(object);
+unlock:
+	raw_spin_unlock_irqrestore(&kmemleak_lock, flags);
+	if (object)
+		__delete_object(object);
+
+out:
+	if (object_l)
+		mem_pool_free(object_l);
+	if (object_r)
+		mem_pool_free(object_r);
 }
 
 static void __paint_it(struct kmemleak_object *object, int color)
