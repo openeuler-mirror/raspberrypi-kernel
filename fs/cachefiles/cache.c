@@ -367,6 +367,7 @@ static void cachefiles_withdraw_volumes(struct cachefiles_cache *cache)
 				continue;
 			}
 			list_del_init(&volume->cache_link);
+			cachefiles_get_volume(volume);
 		}
 		spin_unlock(&cache->object_list_lock);
 		if (!volume)
@@ -374,6 +375,7 @@ static void cachefiles_withdraw_volumes(struct cachefiles_cache *cache)
 
 		cachefiles_withdraw_volume(volume);
 		fscache_put_volume(vcookie, fscache_volume_put_withdraw);
+		cachefiles_put_volume(volume);
 	}
 
 	_leave("");

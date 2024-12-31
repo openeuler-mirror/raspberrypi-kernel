@@ -587,7 +587,7 @@ static int cachefiles_daemon_secctx(struct cachefiles_cache *cache, char *args)
 
 	if (cache->secctx) {
 		pr_err("Second security context specified\n");
-		return -EINVAL;
+		return -EEXIST;
 	}
 
 	secctx = kstrdup(args, GFP_KERNEL);
@@ -653,6 +653,12 @@ static int cachefiles_daemon_cull(struct cachefiles_cache *cache, char *args)
 
 	if (!d_can_lookup(path.dentry))
 		goto notdir;
+
+	/* limit the scope of cull */
+	if (cache->mnt != path.mnt) {
+		path_put(&path);
+		return -EOPNOTSUPP;
+	}
 
 	cachefiles_begin_secure(cache, &saved_cred);
 	ret = cachefiles_cull(cache, path.dentry, args);
@@ -780,6 +786,10 @@ static int cachefiles_daemon_bind(struct cachefiles_cache *cache, char *args)
 
 	if (IS_ENABLED(CONFIG_CACHEFILES_ONDEMAND)) {
 		if (!strcmp(args, "ondemand")) {
+			if (!cachefiles_ondemand_is_enabled()) {
+				pr_err("ondemand mode is disabled\n");
+				return -EINVAL;
+			}
 			set_bit(CACHEFILES_ONDEMAND_MODE, &cache->flags);
 		} else if (*args) {
 			pr_err("Invalid argument to the 'bind' command\n");

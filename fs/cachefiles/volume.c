@@ -10,6 +10,19 @@
 #include "internal.h"
 #include <trace/events/fscache.h>
 
+void cachefiles_get_volume(struct cachefiles_volume *volume)
+{
+	refcount_inc(&volume->ref);
+}
+
+void cachefiles_put_volume(struct cachefiles_volume *volume)
+{
+	if (refcount_dec_and_test(&volume->ref)) {
+		mutex_destroy(&volume->lock);
+		kfree(volume);
+	}
+}
+
 /*
  * Allocate and set up a volume representation.  We make sure all the fanout
  * directories are created and pinned.
@@ -33,6 +46,7 @@ void cachefiles_acquire_volume(struct fscache_volume *vcookie)
 	volume->vcookie = vcookie;
 	volume->cache = cache;
 	INIT_LIST_HEAD(&volume->cache_link);
+	mutex_init(&volume->lock);
 
 	cachefiles_begin_secure(cache, &saved_cred);
 
@@ -77,7 +91,17 @@ retry:
 
 	cachefiles_end_secure(cache, saved_cred);
 
-	vcookie->cache_priv = volume;
+	/*
+	 * The purpose of introducing volume->ref is twofold:
+	 * 1) To allow cachefiles_object to pin cachefiles_volume.
+	 * 2) To handle the concurrency between cachefiles_free_volume() and
+	 * cachefiles_withdraw_volume() introduced by enabling sync_unhash
+	 * volume, preventing the former from releasing cachefiles_volume and
+	 * causing a use-after-free in the latter.
+	 */
+	refcount_set(&volume->ref, 1);
+	/* Prevent writing vcookie->cache_priv before writing volume->ref. */
+	smp_store_release(&vcookie->cache_priv, volume);
 	n_accesses = atomic_inc_return(&vcookie->n_accesses); /* Stop wakeups on dec-to-0 */
 	trace_fscache_access_volume(vcookie->debug_id, 0,
 				    refcount_read(&vcookie->ref),
@@ -98,6 +122,7 @@ error_dir:
 error_name:
 	kfree(name);
 error_vol:
+	mutex_destroy(&volume->lock);
 	kfree(volume);
 	cachefiles_end_secure(cache, saved_cred);
 }
@@ -111,24 +136,40 @@ static void __cachefiles_free_volume(struct cachefiles_volume *volume)
 
 	_enter("");
 
-	volume->vcookie->cache_priv = NULL;
+	mutex_lock(&volume->lock);
+	if (volume->dir_has_put) {
+		mutex_unlock(&volume->lock);
+		return;
+	}
+
+	volume->dir_has_put = true;
 
 	for (i = 0; i < 256; i++)
 		cachefiles_put_directory(volume->fanout[i]);
 	cachefiles_put_directory(volume->dentry);
-	kfree(volume);
+	mutex_unlock(&volume->lock);
 }
 
 void cachefiles_free_volume(struct fscache_volume *vcookie)
 {
 	struct cachefiles_volume *volume = vcookie->cache_priv;
 
-	if (volume) {
+	/*
+	 * Prevents access to the cachefiles_cache that has been freed caused
+	 * by the concurrency between cachefiles_free_volume() and
+	 * cachefiles_daemon_release(), the later may kree(cache).
+	 */
+	mutex_lock(&volume->lock);
+	if (!volume->dir_has_put) {
 		spin_lock(&volume->cache->object_list_lock);
 		list_del_init(&volume->cache_link);
 		spin_unlock(&volume->cache->object_list_lock);
-		__cachefiles_free_volume(volume);
 	}
+	mutex_unlock(&volume->lock);
+
+	vcookie->cache_priv = NULL;
+	__cachefiles_free_volume(volume);
+	cachefiles_put_volume(volume);
 }
 
 void cachefiles_withdraw_volume(struct cachefiles_volume *volume)

@@ -5,6 +5,7 @@
  */
 #include <linux/pseudo_fs.h>
 #include <linux/fscache.h>
+#include <linux/fscache-cache.h>
 #include "internal.h"
 
 static DEFINE_MUTEX(erofs_domain_list_lock);
@@ -366,6 +367,9 @@ static int erofs_fscache_register_volume(struct super_block *sb)
 		erofs_err(sb, "failed to register volume for %s", name);
 		ret = volume ? PTR_ERR(volume) : -EOPNOTSUPP;
 		volume = NULL;
+	} else {
+		/* enable synchronous unhashing for the associated volumes */
+		fscache_set_sync_volume_unhash(volume->cache);
 	}
 
 	sbi->volume = volume;

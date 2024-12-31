@@ -3582,4 +3582,21 @@ static inline void fs_file_read_update_args_by_trace(struct kiocb *iocb) {}
 static inline void fs_file_read_do_trace(struct kiocb *iocb) {}
 #endif
 
+#if IS_ENABLED(CONFIG_EROFS_FS)
+extern bool erofs_enabled;
+#endif
+
+#if IS_ENABLED(CONFIG_CACHEFILES_ONDEMAND)
+extern bool cachefiles_ondemand_enabled;
+static inline bool cachefiles_ondemand_is_enabled(void)
+{
+	return READ_ONCE(cachefiles_ondemand_enabled);
+}
+#else
+static inline bool cachefiles_ondemand_is_enabled(void)
+{
+	return false;
+}
+#endif
+
 #endif /* _LINUX_FS_H */
