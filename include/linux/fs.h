@@ -1225,6 +1225,8 @@ enum {
 
 struct sb_writers {
 	unsigned short			frozen;		/* Is sb frozen? */
+	unsigned short			frozen_ro;	/* Was sb read-only
+							 * when frozen? */
 	unsigned short			freeze_holders;	/* Who froze fs? */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
