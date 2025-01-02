@@ -1224,8 +1224,9 @@ enum {
 #define SB_FREEZE_LEVELS (SB_FREEZE_COMPLETE - 1)
 
 struct sb_writers {
-	unsigned short			frozen;		/* Is sb frozen? */
-	unsigned short			frozen_ro;	/* Was sb read-only
+	KABI_REPLACE2(unsigned short	frozen,
+		unsigned char		frozen,		/* Is sb frozen? */
+		unsigned char		frozen_ro)	/* Was sb read-only
 							 * when frozen? */
 	unsigned short			freeze_holders;	/* Who froze fs? */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
