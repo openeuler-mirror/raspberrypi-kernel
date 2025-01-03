@@ -779,7 +779,7 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 		WARN_ON_ONCE(1);
 
 	if (!continue_fs && !sb_rdonly(sb)) {
-		set_bit(EXT4_FLAGS_SHUTDOWN, &EXT4_SB(sb)->s_ext4_flags);
+		ext4_set_mount_flag(sb, EXT4_MF_FS_ABORTED);
 		if (journal)
 			jbd2_journal_abort(journal, -EIO);
 	}
@@ -821,12 +821,11 @@ static void ext4_handle_error(struct super_block *sb, bool force_ro, int error,
 
 	ext4_msg(sb, KERN_CRIT, "Remounting filesystem read-only");
 	/*
-	 * EXT4_FLAGS_SHUTDOWN was set which stops all filesystem
-	 * modifications. We don't set SB_RDONLY because that requires
-	 * sb->s_umount semaphore and setting it without proper remount
-	 * procedure is confusing code such as freeze_super() leading to
-	 * deadlocks and other problems.
+	 * Make sure updated value of ->s_mount_flags will be visible before
+	 * ->s_flags update
 	 */
+	smp_wmb();
+	sb->s_flags |= SB_RDONLY;
 #ifdef CONFIG_EXT4_ERROR_REPORT
 out:
 	ext4_netlink_send_info(sb, force_ro ? 2 : 1);
@@ -6437,7 +6436,13 @@ static int ext4_clear_journal_err(struct super_block *sb,
  */
 int ext4_force_commit(struct super_block *sb)
 {
-	return ext4_journal_force_commit(EXT4_SB(sb)->s_journal);
+	journal_t *journal;
+
+	if (sb_rdonly(sb))
+		return 0;
+
+	journal = EXT4_SB(sb)->s_journal;
+	return ext4_journal_force_commit(journal);
 }
 
 static int ext4_sync_fs(struct super_block *sb, int wait)
@@ -6679,7 +6684,7 @@ static int __ext4_remount(struct fs_context *fc, struct super_block *sb)
 	flush_work(&sbi->s_sb_upd_work);
 
 	if ((bool)(fc->sb_flags & SB_RDONLY) != sb_rdonly(sb)) {
-		if (ext4_forced_shutdown(sb)) {
+		if (ext4_test_mount_flag(sb, EXT4_MF_FS_ABORTED)) {
 			err = -EROFS;
 			goto restore_opts;
 		}

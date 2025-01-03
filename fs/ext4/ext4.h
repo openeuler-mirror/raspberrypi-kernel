@@ -1821,6 +1821,7 @@ static inline int ext4_valid_inum(struct super_block *sb, unsigned long ino)
  */
 enum {
 	EXT4_MF_MNTDIR_SAMPLED,
+	EXT4_MF_FS_ABORTED,	/* Fatal error detected */
 	EXT4_MF_FC_INELIGIBLE	/* Fast commit ineligible */
 };
 
