@@ -285,4 +285,10 @@ static inline int mmc_card_broken_cache_flush(const struct mmc_card *c)
 {
 	return c->quirks & MMC_QUIRK_BROKEN_CACHE_FLUSH;
 }
+
+static inline int mmc_card_working_sd_cq(const struct mmc_card *c)
+{
+	return c->quirks & MMC_QUIRK_WORKING_SD_CQ;
+}
+
 #endif
