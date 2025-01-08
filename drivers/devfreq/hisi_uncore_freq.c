@@ -414,16 +414,6 @@ static struct cpumask *get_package_cpumask(int cpu)
 	return topology_core_cpumask(cpu);
 }
 
-static int get_cluster_id(int cpu)
-{
-	return topology_cluster_id(cpu);
-}
-
-static struct cpumask *get_cluster_cpumask(int cpu)
-{
-	return topology_cluster_cpumask(cpu);
-}
-
 static int hisi_uncore_mark_related_cpus_wrap(struct hisi_uncore_freq *uncore)
 {
 	int rc;
@@ -433,12 +423,6 @@ static int hisi_uncore_mark_related_cpus_wrap(struct hisi_uncore_freq *uncore)
 	rc = hisi_uncore_mark_related_cpus(uncore, "related-package",
 					   get_package_id,
 					   get_package_cpumask);
-	if (rc == 0)
-		return rc;
-
-	rc = hisi_uncore_mark_related_cpus(uncore, "related-cluster",
-					   get_cluster_id,
-					   get_cluster_cpumask);
 	return rc;
 }
 
