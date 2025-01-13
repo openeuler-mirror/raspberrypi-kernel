@@ -151,6 +151,62 @@ asmlinkage void noinstr asm_exit_to_user_mode(struct pt_regs *regs)
 	exit_to_user_mode(regs);
 }
 
+#if defined(CONFIG_FAST_SYSCALL) || defined(CONFIG_FAST_IRQ)
+/*
+ * Copy from exit_to_user_mode_prepare
+ */
+static __always_inline void fast_exit_to_user_mode_prepare(struct pt_regs *regs)
+{
+	unsigned long flags;
+
+	local_daif_mask();
+
+	flags = read_thread_flags();
+	if (unlikely(flags & _TIF_WORK_MASK))
+		do_notify_resume(regs, flags);
+
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_sys_exit();
+#endif
+}
+
+/* Copy from __exit_to_user_mode */
+static __always_inline void __fast_exit_to_user_mode(void)
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	trace_hardirqs_on_prepare();
+	lockdep_hardirqs_on_prepare();
+#endif
+	user_enter_irqoff();
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_hardirqs_on(CALLER_ADDR0);
+#endif
+}
+
+static __always_inline void fast_exit_to_user_mode(struct pt_regs *regs)
+{
+	fast_exit_to_user_mode_prepare(regs);
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	mte_check_tfsr_exit();
+#endif
+	__fast_exit_to_user_mode();
+}
+
+/* Copy from __enter_from_user_mode */
+static __always_inline void fast_enter_from_user_mode(struct pt_regs *regs)
+{
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	lockdep_hardirqs_off(CALLER_ADDR0);
+#endif
+	CT_WARN_ON(ct_state() != CONTEXT_USER);
+	user_exit_irqoff();
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
+	trace_hardirqs_off_finish();
+	mte_disable_tco_entry(current);
+#endif
+}
+#endif
+
 /*
  * Handle IRQ/context state management when entering an NMI from user/kernel
  * mode. Before this function is called it is not safe to call regular kernel
@@ -513,80 +569,12 @@ static __always_inline void __el1_pnmi(struct pt_regs *regs,
 }
 
 #ifdef CONFIG_FAST_IRQ
-static __always_inline void __el1_xint(struct pt_regs *regs,
-				       void (*handler)(struct pt_regs *))
-{
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	enter_from_kernel_mode(regs);
-#endif
-
-	xint_enter_rcu();
-	do_interrupt_handler(regs, handler);
-	xint_exit_rcu();
-
-	arm64_preempt_schedule_irq();
-
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	exit_to_kernel_mode(regs);
-#endif
-}
-
-static void noinstr el1_xint(struct pt_regs *regs, u64 nmi_flag,
-			     void (*handler)(struct pt_regs *),
-			     void (*nmi_handler)(struct pt_regs *))
-{
-	/* Is there a NMI to handle? */
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
-		__el1_nmi(regs, nmi_handler);
-		return;
-	}
-#endif
-
-	write_sysreg(DAIF_PROCCTX_NOIRQ, daif);
-
-	if (IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) && !interrupts_enabled(regs))
-		__el1_pnmi(regs, handler);
-	else
-		__el1_xint(regs, handler);
-}
-
-asmlinkage void noinstr el1h_64_xint_handler(struct pt_regs *regs)
-{
-	el1_xint(regs, ISR_EL1_IS, handle_arch_irq, handle_arch_nmi_irq);
-}
-
-static __always_inline void xint_exit_to_user_mode_prepare(struct pt_regs *regs)
-{
-	unsigned long flags;
-
-	local_daif_mask();
-
-	flags = read_thread_flags();
-	if (unlikely(flags & _TIF_WORK_MASK))
-		do_notify_resume(regs, flags);
-
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	lockdep_sys_exit();
-#endif
-}
-
-static __always_inline void xint_exit_to_user_mode(struct pt_regs *regs)
-{
-	xint_exit_to_user_mode_prepare(regs);
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	mte_check_tfsr_exit();
-	__exit_to_user_mode();
-#endif
-}
-
 static void noinstr el0_xint(struct pt_regs *regs, u64 nmi_flag,
 			     void (*handler)(struct pt_regs *),
 			     void (*nmi_handler)(struct pt_regs *))
 {
+	fast_enter_from_user_mode(regs);
 #ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	enter_from_user_mode(regs);
-
 	/* Is there a NMI to handle? */
 	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
 		/*
@@ -615,7 +603,7 @@ static void noinstr el0_xint(struct pt_regs *regs, u64 nmi_flag,
 	do_interrupt_handler(regs, handler);
 	xint_exit_rcu();
 
-	xint_exit_to_user_mode(regs);
+	fast_exit_to_user_mode(regs);
 }
 
 
@@ -828,46 +816,17 @@ static void noinstr el0_fpac(struct pt_regs *regs, unsigned long esr)
 }
 
 #ifdef CONFIG_FAST_SYSCALL
-/*
- * Copy from exit_to_user_mode_prepare
- */
-static __always_inline void xcall_exit_to_user_mode_prepare(struct pt_regs *regs)
-{
-	unsigned long flags;
-
-	local_daif_mask();
-
-	flags = read_thread_flags();
-	if (unlikely(flags & _TIF_WORK_MASK))
-		do_notify_resume(regs, flags);
-
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	lockdep_sys_exit();
-#endif
-}
-
-static __always_inline void xcall_exit_to_user_mode(struct pt_regs *regs)
-{
-	xcall_exit_to_user_mode_prepare(regs);
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	mte_check_tfsr_exit();
-	__exit_to_user_mode();
-#endif
-}
-
 /* Copy from el0_sync */
 static void noinstr el0_xcall(struct pt_regs *regs)
 {
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
-	enter_from_user_mode(regs);
-#endif
+	fast_enter_from_user_mode(regs);
 #ifndef CONFIG_SECURITY_FEATURE_BYPASS
 	cortex_a76_erratum_1463225_svc_handler();
 #endif
 	fp_user_discard();
 	local_daif_restore(DAIF_PROCCTX);
 	do_el0_svc(regs);
-	xcall_exit_to_user_mode(regs);
+	fast_exit_to_user_mode(regs);
 }
 
 asmlinkage void noinstr el0t_64_xcall_handler(struct pt_regs *regs)

@@ -128,7 +128,9 @@
 #include <linux/blk-cgroup.h>
 #include <linux/fadvise.h>
 #include <linux/sched/mm.h>
+#ifndef __GENKSYMS__
 #include <linux/dynamic_pool.h>
+#endif
 
 #include "internal.h"
 
@@ -511,10 +513,10 @@ void page_cache_ra_order(struct readahead_control *ractl,
 
 	limit = min(limit, index + ra->size - 1);
 
-	if (new_order < MAX_PAGECACHE_ORDER)
+	if (new_order < mapping_max_folio_order(mapping))
 		new_order += 2;
 
-	new_order = min_t(unsigned int, MAX_PAGECACHE_ORDER, new_order);
+	new_order = min(mapping_max_folio_order(mapping), new_order);
 	new_order = min_t(unsigned int, new_order, ilog2(ra->size));
 
 	/* See comment in page_cache_ra_unbounded() */

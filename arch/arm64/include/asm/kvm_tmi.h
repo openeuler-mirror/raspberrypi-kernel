@@ -382,7 +382,6 @@ static inline bool is_armv8_4_sel2_present(void)
 
 u64 tmi_version(void);
 u64 tmi_data_create(u64 data, u64 rd, u64 map_addr, u64 src, u64 level);
-u64 tmi_data_destroy(u64 rd, u64 map_addr, u64 level);
 u64 tmi_cvm_activate(u64 rd);
 u64 tmi_cvm_create(u64 params_ptr, u64 numa_set);
 u64 tmi_cvm_destroy(u64 rd);
@@ -393,7 +392,6 @@ u64 tmi_ttt_create(u64 numa_set, u64 rd, u64 map_addr, u64 level);
 u64 tmi_psci_complete(u64 calling_tec, u64 target_tec);
 u64 tmi_features(u64 index);
 u64 tmi_ttt_map_range(u64 rd, u64 map_addr, u64 size, u64 cur_node, u64 target_node);
-u64 tmi_ttt_unmap_range(u64 rd, u64 map_addr, u64 size, u64 node_id);
 u64 tmi_mem_info_show(u64 mem_info_addr);
 
 u64 tmi_dev_ttt_create(u64 numa_set, u64 rd, u64 map_addr, u64 level);
@@ -405,7 +403,7 @@ u64 tmi_mmio_unmap(u64 rd, u64 map_addr, u64 level);
 u64 tmi_mmio_write(u64 addr, u64 val, u64 bits, u64 dev_num);
 u64 tmi_mmio_read(u64 addr, u64 bits, u64 dev_num);
 u64 tmi_dev_delegate(u64 params);
-u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id);
+u64 tmi_dev_attach(u64 vdev, u64 rd, u64 smmu_id, u64 smmu_vmid);
 u64 tmi_handle_s_evtq(u64 smmu_id);
 u64 tmi_smmu_device_reset(u64 params);
 u64 tmi_smmu_pcie_core_check(u64 smmu_base);

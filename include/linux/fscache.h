@@ -90,7 +90,7 @@ struct fscache_volume {
 #define FSCACHE_VOLUME_CREATING		4	/* Volume is being created on disk */
 	u8				coherency_len;	/* Length of the coherency data */
 
-	KABI_RESERVE(1)
+	KABI_USE(1, atomic_t n_hash_cookies)	/* Number of hashed data cookies in volume */
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)

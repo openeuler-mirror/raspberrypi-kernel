@@ -13,6 +13,10 @@
 #include <linux/kernel_stat.h>
 #include <linux/mutex.h>
 
+#ifdef CONFIG_FAST_IRQ
+#include <linux/irqchip/arm-gic-v3.h>
+#endif
+
 #include "internals.h"
 
 /*

@@ -44,8 +44,9 @@ struct fscache_cache {
 	unsigned int		debug_id;
 	enum fscache_cache_state state;
 	char			*name;
+	KABI_USE(1, unsigned long flags)
+#define FSCACHE_CACHE_SYNC_VOLUME_UNHASH	0	/* Mark to enable volume sync unhash */
 
-	KABI_RESERVE(1)
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
@@ -197,6 +198,31 @@ static inline void fscache_wait_for_objects(struct fscache_cache *cache)
 {
 	wait_event(fscache_clearance_waiters,
 		   atomic_read(&cache->object_count) == 0);
+}
+
+/**
+ * fscache_set_sync_volume_unhash - Enable the synchronization unhash mechanism
+ * @cache: The cache to set
+ *
+ * Enable the volume synchronization wait-unhash mechanism. The volume will be
+ * unhashed in advance, without relying on the reference count reaching zero.
+ */
+static inline void fscache_set_sync_volume_unhash(struct fscache_cache *cache)
+{
+	set_bit(FSCACHE_CACHE_SYNC_VOLUME_UNHASH, &cache->flags);
+}
+
+/**
+ * fscache_test_sync_volume_unhash - Check whether the synchronization
+ * unhash mechanism is enabled
+ * @cache: The cache to query
+ *
+ * Indicate whether the volume synchronization wait-unhash mechanism is
+ * currently enabled.
+ */
+static inline bool fscache_test_sync_volume_unhash(struct fscache_cache *cache)
+{
+	return test_bit(FSCACHE_CACHE_SYNC_VOLUME_UNHASH, &cache->flags);
 }
 
 #ifdef CONFIG_FSCACHE_STATS

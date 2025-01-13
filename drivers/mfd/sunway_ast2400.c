@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <asm/ast2400.h>
 
+#define DRIVER_NAME "sunway_superio_ast2400"
 
 static int superio_uart0_irq;
 static int superio_uart1_irq;
@@ -79,7 +80,7 @@ static void superio_com1_init(struct pnp_device *device)
 	pnp_set_logical_device(device);
 	pnp_set_enable(device, 1);
 
-	pnp_write_config(device, 0x60, 0x3);
+	pnp_write_config(device, 0x60, 0x2);
 	pnp_write_config(device, 0x61, 0xf8);
 
 	pnp_write_config(device, 0x70, superio_uart0_irq);
@@ -96,7 +97,7 @@ static void superio_com2_init(struct pnp_device *device)
 	pnp_set_logical_device(device);
 	pnp_set_enable(device, 1);
 
-	pnp_write_config(device, 0x60, 0x2);
+	pnp_write_config(device, 0x60, 0x3);
 	pnp_write_config(device, 0x61, 0xf8);
 
 	pnp_write_config(device, 0x70, superio_uart1_irq);
@@ -162,7 +163,7 @@ static int superio_ast2400_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_IO, 1);
+	res = platform_get_resource(pdev, IORESOURCE_IO, 0);
 	if (res) {
 		physaddr = res->start;
 		dev_info(&pdev->dev, "request memory region %pR\n", res);
@@ -170,8 +171,8 @@ static int superio_ast2400_probe(struct platform_device *pdev)
 
 	superio_device->dev = &pdev->dev;
 	superio_device->enabled = 1;
-	superio_device->superio_ast2400_efir = physaddr + SUPERIO_PNP_PORT;
-	superio_device->superio_ast2400_efdr = physaddr + SUPERIO_PNP_PORT + 1;
+	superio_device->superio_ast2400_efir = physaddr + (SUPERIO_PNP_PORT << PORT_OFFSET);
+	superio_device->superio_ast2400_efdr = physaddr + ((SUPERIO_PNP_PORT + 1) << PORT_OFFSET);
 	superio_uart0_irq = platform_get_irq_byname(pdev, "uart0_irq");
 	superio_uart1_irq = platform_get_irq_byname(pdev, "uart1_irq");
 
@@ -199,7 +200,7 @@ static struct platform_driver superio_nuvoton_ast2400_driver = {
 	.probe          = superio_ast2400_probe,
 	.remove         = superio_ast2400_remove,
 	.driver         = {
-		.name   = "sunway_superio_ast2400"
+		.name   = DRIVER_NAME
 	},
 };
 

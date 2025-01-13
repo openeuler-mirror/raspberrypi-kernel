@@ -180,16 +180,30 @@ static const struct apd_device_desc hip08_spi_desc = {
 #endif /* CONFIG_ARM64 */
 
 #ifdef CONFIG_SW64
-static const struct apd_device_desc sunway_i2c_desc = {
-	.setup = acpi_apd_setup,
-	.fixed_clk_rate = 25000000,
+#include <asm/platform.h>
+
+extern u64 sunway_mclk_hz;
+static int sw64_acpi_apd_setup(struct apd_private_data *pdata);
+
+static struct apd_device_desc sunway_i2c_desc = {
+	.setup = sw64_acpi_apd_setup,
+	.fixed_clk_rate = 50000000,
 };
 
-static const struct apd_device_desc sunway_spi_desc = {
-	.setup = acpi_apd_setup,
-	.fixed_clk_rate = 25000000,
+static struct apd_device_desc sunway_spi_desc = {
+	.setup = sw64_acpi_apd_setup,
+	.fixed_clk_rate = 50000000,
 };
-#endif
+
+static int sw64_acpi_apd_setup(struct apd_private_data *pdata)
+{
+	struct apd_device_desc *dev_desc = (struct apd_device_desc *)pdata->dev_desc;
+
+	dev_desc->fixed_clk_rate = sunway_mclk_hz;
+
+	return acpi_apd_setup(pdata);
+}
+#endif /* CONFIG_SW64 */
 
 #endif
 
@@ -261,8 +275,8 @@ static const struct acpi_device_id acpi_apd_device_ids[] = {
 	{ "NXP0001", APD_ADDR(nxp_i2c_desc) },
 #endif
 #ifdef CONFIG_SW64
-	{ "HISI02A1", APD_ADDR(sunway_i2c_desc) },
-	{ "HISI0173", APD_ADDR(sunway_spi_desc) },
+	{ "SUNW0005", APD_ADDR(sunway_i2c_desc) },
+	{ "SUNW0008", APD_ADDR(sunway_spi_desc) },
 #endif
 	{ }
 };

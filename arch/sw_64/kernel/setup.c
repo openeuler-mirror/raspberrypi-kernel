@@ -10,7 +10,6 @@
 #include <linux/console.h>
 #include <linux/memblock.h>
 #include <linux/root_dev.h>
-#include <linux/initrd.h>
 #ifdef CONFIG_MAGIC_SYSRQ
 #include <linux/sysrq.h>
 #include <linux/reboot.h>
@@ -20,16 +19,16 @@
 #endif
 #include <linux/of_fdt.h>
 #include <linux/of_platform.h>
-#include <linux/genalloc.h>
+#include <linux/libfdt.h>
 #include <linux/acpi.h>
 #include <linux/cpu.h>
 
 #include <asm/efi.h>
-#include <asm/kvm_cma.h>
 #include <asm/mmu_context.h>
 #include <asm/sw64_init.h>
 #include <asm/timer.h>
 #include <asm/pci_impl.h>
+#include <asm/kexec.h>
 
 #include "proto.h"
 
@@ -40,24 +39,7 @@
 #define DBGDCONT(args...)
 #endif
 
-int __cpu_to_rcid[NR_CPUS];		/* Map logical to physical */
-EXPORT_SYMBOL(__cpu_to_rcid);
-
 DEFINE_PER_CPU(unsigned long, hard_node_id) = { 0 };
-static DEFINE_PER_CPU(struct cpu, cpu_devices);
-
-#ifdef CONFIG_SUBARCH_C3B
-#if defined(CONFIG_KVM) || defined(CONFIG_KVM_MODULE)
-struct cma *sw64_kvm_cma;
-EXPORT_SYMBOL(sw64_kvm_cma);
-
-static phys_addr_t kvm_mem_size;
-static phys_addr_t kvm_mem_base;
-
-struct gen_pool *sw64_kvm_pool;
-EXPORT_SYMBOL(sw64_kvm_pool);
-#endif
-#endif
 
 static inline int phys_addr_valid(unsigned long addr)
 {
@@ -66,7 +48,7 @@ static inline int phys_addr_valid(unsigned long addr)
 	 * and other physical address variables cannot be used, so let's
 	 * roughly judge physical address based on arch specific bit.
 	 */
-	return !(addr >> (cpu_desc.pa_bits - 1));
+	return !(addr >> (current_cpu_data.pa_bits - 1));
 }
 
 extern struct atomic_notifier_head panic_notifier_list;
@@ -76,9 +58,6 @@ static struct notifier_block sw64_panic_block = {
 	NULL,
 	INT_MAX /* try to do it first */
 };
-
-/* the value is IOR: CORE_ONLIE*/
-cpumask_t core_start = CPU_MASK_NONE;
 
 static struct resource data_resource = {
 	.name   = "Kernel data",
@@ -101,28 +80,38 @@ static struct resource bss_resource = {
 	.flags  = IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM
 };
 
-/* A collection of per-processor data.  */
-struct cpuinfo_sw64 cpu_data[NR_CPUS];
-EXPORT_SYMBOL(cpu_data);
-
 DEFINE_STATIC_KEY_TRUE(run_mode_host_key);
 DEFINE_STATIC_KEY_FALSE(run_mode_guest_key);
 DEFINE_STATIC_KEY_FALSE(run_mode_emul_key);
-struct cpu_desc_t cpu_desc;
+
+DEFINE_STATIC_KEY_FALSE(hw_una_enabled);
+DEFINE_STATIC_KEY_FALSE(junzhang_v1_key);
+DEFINE_STATIC_KEY_FALSE(junzhang_v2_key);
+DEFINE_STATIC_KEY_FALSE(junzhang_v3_key);
+
 struct socket_desc_t socket_desc[MAX_NUMSOCKETS];
 int memmap_nr;
 struct memmap_entry memmap_map[MAX_NUMMEMMAPS];
 bool memblock_initialized;
 
-cpumask_t cpu_offline = CPU_MASK_NONE;
-
-static char command_line[COMMAND_LINE_SIZE] __initdata;
-#ifdef CONFIG_CMDLINE_BOOL
-static char builtin_cmdline[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
-#endif
-
 /* boot_params */
+/**
+ * Keep sunway_boot_params for backward compatibility. All related code
+ * will be removed when kernel no longer support C3B(xuelang).
+ */
 struct boot_params *sunway_boot_params = (struct boot_params *) (PARAM + 0x100);
+
+unsigned long sunway_boot_magic;
+EXPORT_SYMBOL(sunway_boot_magic);
+
+unsigned long sunway_dtb_address;
+EXPORT_SYMBOL(sunway_dtb_address);
+
+unsigned long legacy_io_base;
+unsigned long legacy_io_shift;
+
+u64 sunway_mclk_hz;
+u64 sunway_extclk_hz;
 
 /*
  * The format of "screen_info" is strange, and due to early
@@ -140,86 +129,12 @@ struct screen_info screen_info = {
 };
 EXPORT_SYMBOL(screen_info);
 
-/*
- * Move global data into per-processor storage.
- */
-void store_cpu_data(int cpu)
+#ifdef CONFIG_HARDLOCKUP_DETECTOR_PERF
+u64 hw_nmi_get_sample_period(int watchdog_thresh)
 {
-	cpu_data[cpu].last_asid = ASID_FIRST_VERSION;
+	return get_cpu_freq() * watchdog_thresh;
 }
-
-#ifdef CONFIG_KEXEC
-
-void *kexec_control_page;
-
-#define KTEXT_MAX	KERNEL_IMAGE_SIZE
-
-static void __init kexec_control_page_init(void)
-{
-	phys_addr_t addr;
-
-	addr = memblock_phys_alloc_range(KEXEC_CONTROL_PAGE_SIZE, PAGE_SIZE,
-					0, KTEXT_MAX);
-	kexec_control_page = (void *)(__START_KERNEL_map + addr);
-}
-
-/*
- * reserve_crashkernel() - reserves memory are for crash kernel
- *
- * This function reserves memory area given in "crashkernel=" kernel command
- * line parameter. The memory reserved is used by a dump capture kernel when
- * primary kernel is crashing.
- */
-static void __init reserve_crashkernel(void)
-{
-	unsigned long long crash_size, crash_base;
-	int ret;
-
-	ret = parse_crashkernel(boot_command_line, mem_desc.size,
-			&crash_size, &crash_base);
-	if (ret || !crash_size)
-		return;
-
-	if (!crash_size) {
-		pr_warn("size of crash kernel memory unspecified, no memory reserved for crash kernel\n");
-		return;
-	}
-	if (!crash_base) {
-		pr_warn("base of crash kernel memory unspecified, no memory reserved for crash kernel\n");
-		return;
-	}
-
-	if (!memblock_is_region_memory(crash_base, crash_size))
-		memblock_add(crash_base, crash_size);
-
-	ret = memblock_reserve(crash_base, crash_size);
-	if (ret < 0) {
-		pr_warn("crashkernel reservation failed - memory is in use [mem %#018llx-%#018llx]\n",
-				crash_base, crash_base + crash_size - 1);
-		return;
-	}
-
-	pr_info("Reserving %ldMB of memory at %ldMB for crashkernel (System RAM: %ldMB)\n",
-			(unsigned long)(crash_size >> 20),
-			(unsigned long)(crash_base >> 20),
-			(unsigned long)(mem_desc.size >> 20));
-
-	ret = add_memmap_region(crash_base, crash_size, memmap_crashkernel);
-	if (ret)
-		pr_warn("Add crash kernel area [mem %#018llx-%#018llx] to memmap region failed.\n",
-				crash_base, crash_base + crash_size - 1);
-
-	if (crash_base >= KERNEL_IMAGE_SIZE)
-		pr_warn("Crash base should be less than %#x\n", KERNEL_IMAGE_SIZE);
-
-	crashk_res.start = crash_base;
-	crashk_res.end = crash_base + crash_size - 1;
-	insert_resource(&iomem_resource, &crashk_res);
-}
-#else /* !defined(CONFIG_KEXEC)         */
-static void __init reserve_crashkernel(void) {}
-static void __init kexec_control_page_init(void) {}
-#endif /* !defined(CONFIG_KEXEC)  */
+#endif
 
 /*
  * I/O resources inherited from PeeCees. Except for perhaps the
@@ -255,10 +170,6 @@ reserve_std_resources(void)
 				break;
 			}
 	}
-
-	/* Fix up for the Jensen's queer RTC placement.  */
-	standard_io_resources[0].start = RTC_PORT(0);
-	standard_io_resources[0].end = RTC_PORT(0) + 0x10;
 
 	for (i = 0; i < ARRAY_SIZE(standard_io_resources); ++i)
 		request_resource(io, standard_io_resources+i);
@@ -322,31 +233,6 @@ static int __init setup_cpuoffline(char *p)
 }
 early_param("cpuoffline", setup_cpuoffline);
 
-#ifdef CONFIG_BLK_DEV_INITRD
-static void * __init move_initrd(unsigned long mem_limit)
-{
-	void *start;
-	unsigned long size;
-
-	size = initrd_end - initrd_start;
-	start = memblock_alloc_from(PAGE_ALIGN(size), PAGE_SIZE, 0);
-	if (!start || __pa(start) + size > mem_limit) {
-		initrd_start = initrd_end = 0;
-		return NULL;
-	}
-	memmove(start, (void *)initrd_start, size);
-	initrd_start = (unsigned long)start;
-	initrd_end = initrd_start + size;
-	pr_info("initrd moved to 0x%px\n", start);
-	return start;
-}
-#else
-static void * __init move_initrd(unsigned long mem_limit)
-{
-	return NULL;
-}
-#endif
-
 static bool __init memmap_range_valid(phys_addr_t base, phys_addr_t *size)
 {
 	if (base > memblock_end_of_DRAM())
@@ -402,26 +288,9 @@ void __init process_memmap(void)
 			}
 			break;
 		case memmap_initrd:
-			if ((base + size) > memblock_end_of_DRAM()) {
-				phys_addr_t old_base = base;
-
-				base = (unsigned long) move_initrd(memblock_end_of_DRAM());
-				if (!base) {
-					pr_err("initrd memmap region [mem %#018llx-%#018llx] extends beyond end of memory (%#018llx)\n",
-							old_base, old_base + size - 1, memblock_end_of_DRAM());
-					break;
-				}
-				memmap_map[i].addr = base;
-			}
-			pr_info("initrd memmap region [mem %#018llx-%#018llx]\n", base, base + size - 1);
-			ret = memblock_reserve(base, size);
-			if (ret)
-				pr_err("reserve memmap region [mem %#018llx-%#018llx] failed\n",
-						base, base + size - 1);
-			break;
 		case memmap_kvm:
 		case memmap_crashkernel:
-			/* kvm and crashkernel are handled elsewhere, skip */
+			/* initrd, kvm and crashkernel are handled elsewhere, skip */
 			break;
 		case memmap_acpi:
 			pr_err("ACPI memmap region is not supported.\n");
@@ -515,37 +384,6 @@ static int __init request_standard_resources(void)
 }
 subsys_initcall(request_standard_resources);
 
-#ifdef CONFIG_NUMA
-extern void cpu_set_node(void);
-#endif
-
-static void __init show_socket_mem_layout(void)
-{
-	int i;
-	phys_addr_t base, size, end;
-
-	base = 0;
-
-	pr_info("Socket memory layout:\n");
-	for (i = 0; i < MAX_NUMSOCKETS; i++) {
-		if (socket_desc[i].is_online) {
-			size = socket_desc[i].socket_mem;
-			end = base + size - 1;
-			pr_info("Socket %d: [mem %#018llx-%#018llx], size %llu\n",
-					i, base, end, size);
-			base = end + 1;
-		}
-	}
-	pr_info("Reserved memory size for Socket 0: %#lx\n", NODE0_START);
-}
-
-int page_is_ram(unsigned long pfn)
-{
-	pfn <<= PAGE_SHIFT;
-
-	return pfn >= mem_desc.base && pfn < (mem_desc.base + mem_desc.size);
-}
-
 static int __init topology_init(void)
 {
 	int i, ret;
@@ -567,116 +405,211 @@ static int __init topology_init(void)
 }
 subsys_initcall(topology_init);
 
-static void __init setup_machine_fdt(void)
+static bool __init arch_dtb_verify(void *dt_virt, bool from_firmware)
 {
-#ifdef CONFIG_USE_OF
+	unsigned long dt_phys = __boot_pa(dt_virt);
+
+	if (!phys_addr_valid(dt_phys)) {
+		pr_crit("Invalid physical DTB address 0x%lx\n", dt_phys);
+		return false;
+	}
+
+	/* Only for non built-in DTB */
+	if (from_firmware &&
+		(dt_phys < virt_to_phys((void *)__bss_stop)))
+		pr_warn("DTB(from firmware) may have been corrupted by kernel image!\n");
+
+	return true;
+}
+
+void early_parse_fdt_property(const void *fdt, const char *path,
+		const char *prop_name, u64 *property, int size)
+{
+	int node, prop_len;
+	const __be32 *prop;
+
+	if (!path || !prop_name)
+		return;
+
+	node = fdt_path_offset(fdt, path);
+	if (node < 0) {
+		pr_err("Failed to get node [%s]\n", path);
+		return;
+	}
+
+	prop = fdt_getprop(initial_boot_params, node, prop_name, &prop_len);
+	if (!prop) {
+		pr_err("Failed to get property [%s]\n", prop_name);
+		return;
+	}
+
+	if (prop_len != size)
+		pr_warn("Expect [%s] %d bytes, but %d bytes\n",
+				prop_name, size, prop_len);
+
+	*property = of_read_number(prop, size / 4);
+}
+
+bool sunway_machine_is_compatible(const char *compat)
+{
+	const void *fdt = initial_boot_params;
+	int offset;
+
+	offset = fdt_path_offset(fdt, "/");
+	if (offset < 0)
+		return false;
+
+	return !fdt_node_check_compatible(fdt, offset, compat);
+}
+
+static void __init setup_firmware_fdt(void)
+{
 	void *dt_virt;
 	const char *name;
 
-	/* Give a chance to select kernel builtin DTB firstly */
-	if (IS_ENABLED(CONFIG_BUILTIN_DTB))
-		dt_virt = (void *)__dtb_start;
-	else {
+	if (sunway_boot_magic != 0xDEED2024UL) {
+		/* Bypass DTB from firmware if built-in DTB configured */
+		if (IS_ENABLED(CONFIG_BUILTIN_DTB))
+			goto cmd_handle;
 		dt_virt = (void *)sunway_boot_params->dtb_start;
-		if (virt_to_phys(dt_virt) < virt_to_phys(__bss_stop)) {
-			pr_emerg("BUG: DTB has been corrupted by kernel image!\n");
-			while (true)
-				cpu_relax();
-		}
+	} else {
+		/* Use DTB provided by firmware for early initialization */
+		pr_info("Parse boot params in DTB chosen node\n");
+		dt_virt = (void *)sunway_dtb_address;
 	}
 
-	if (!phys_addr_valid(__boot_pa(dt_virt)) ||
+	/* reserve the DTB from firmware in case it is used later */
+	memblock_reserve(__boot_pa(dt_virt), fdt_totalsize(dt_virt));
+
+	if (!arch_dtb_verify(dt_virt, true) ||
 			!early_init_dt_scan(dt_virt)) {
-		pr_crit("\n"
-			"Error: invalid device tree blob at virtual address %px\n"
-			"The dtb must be 8-byte aligned and must not exceed 2 MB in size\n"
-			"\nPlease check your bootloader.",
-			dt_virt);
+		pr_crit("Invalid DTB(from firmware) at virtual address 0x%lx\n",
+				(unsigned long)dt_virt);
 
 		while (true)
 			cpu_relax();
 	}
 
+	if (sunway_boot_magic == 0xDEED2024UL) {
+		/* Parse MCLK(Hz) from firmware DTB */
+		early_parse_fdt_property(dt_virt, "/soc/clocks/mclk",
+				"clock-frequency", &sunway_mclk_hz, sizeof(u32));
+		pr_info("MCLK: %llu Hz\n", sunway_mclk_hz);
+
+		/* Parse EXTCLK(Hz) from firmware DTB */
+		early_parse_fdt_property(dt_virt, "/soc/clocks/extclk",
+				"clock-frequency", &sunway_extclk_hz, sizeof(u32));
+		pr_info("EXTCLK: %llu Hz\n", sunway_extclk_hz);
+	}
+
+	if (sunway_machine_is_compatible("sunway,junzhang")) {
+		static_branch_enable(&junzhang_v1_key);
+		static_branch_disable(&junzhang_v2_key);
+		static_branch_disable(&junzhang_v3_key);
+	} else if (sunway_machine_is_compatible("sunway,junzhang_v2")) {
+		static_branch_enable(&junzhang_v2_key);
+		static_branch_disable(&junzhang_v1_key);
+		static_branch_disable(&junzhang_v3_key);
+	} else if (sunway_machine_is_compatible("sunway,junzhang_v3")) {
+		static_branch_enable(&junzhang_v3_key);
+		static_branch_disable(&junzhang_v1_key);
+		static_branch_disable(&junzhang_v2_key);
+	}
+
 	name = of_flat_dt_get_machine_name();
-	if (!name)
-		return;
+	if (name)
+		pr_info("DTB(from firmware): Machine model: %s\n", name);
 
-	pr_info("Machine model: %s\n", name);
+cmd_handle:
+	/**
+	 * For C3B(xuelang), kernel command line always comes from
+	 * "sunway_boot_params->cmdline". These code can be removed
+	 * when no longer support C3B(xuelang).
+	 */
+	if (sunway_boot_magic != 0xDEED2024UL) {
+		if (!sunway_boot_params->cmdline)
+			sunway_boot_params->cmdline = (unsigned long)COMMAND_LINE;
+		strlcpy(boot_command_line, (char *)sunway_boot_params->cmdline,
+				COMMAND_LINE_SIZE);
+#ifdef CONFIG_CMDLINE
+#if defined(CONFIG_CMDLINE_EXTEND)
+		strlcat(boot_command_line, " ", COMMAND_LINE_SIZE);
+		strlcat(boot_command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+#elif defined(CONFIG_CMDLINE_FORCE)
+		strlcpy(boot_command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 #else
-	pr_info("Kernel disable device tree support.\n");
-	return;
+		/* No arguments from firmware, use kernel's built-in cmdline */
+		if (!((char *)boot_command_line)[0])
+			strlcpy(boot_command_line, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
 #endif
+#endif /* CONFIG_CMDLINE */
+	}
 }
 
-void __init device_tree_init(void)
+static void __init setup_legacy_io(void)
 {
-	unflatten_and_copy_device_tree();
-	sunway_boot_params->dtb_start = (__u64)initial_boot_params;
+	if (is_guest_or_emul()) {
+		legacy_io_base = PCI_VT_LEGACY_IO;
+		legacy_io_shift = 0;
+		return;
+	}
+
+	if (sunway_machine_is_compatible("sunway,junzhang") ||
+	    sunway_machine_is_compatible("sunway,junzhang_v2")) {
+		/*
+		 * Due to a hardware defect, chip junzhang and junzhang_v2 cannot
+		 * recognize accesses to LPC legacy IO. The workaround is using some
+		 * of the LPC MEMIO space to access Legacy IO space. Thus,
+		 * legacy_io_base should be LPC_MEM_IO instead on these chips.
+		 */
+		legacy_io_base = LPC_MEM_IO;
+		legacy_io_shift = 12;
+	} else {
+		legacy_io_base = LPC_LEGACY_IO;
+		legacy_io_shift = 0;
+	}
 }
 
-static void __init setup_cpu_info(void)
+static void __init setup_builtin_fdt(void)
 {
-	int i;
-	struct cache_desc *c;
-	unsigned long val;
+	void *dt_virt;
+	const char *name;
 
-	val = cpuid(GET_TABLE_ENTRY, 0);
-	cpu_desc.model = CPUID_MODEL(val);
-	cpu_desc.family = CPUID_FAMILY(val);
-	cpu_desc.chip_var = CPUID_CHIP_VAR(val);
-	cpu_desc.arch_var = CPUID_ARCH_VAR(val);
-	cpu_desc.arch_rev = CPUID_ARCH_REV(val);
-	cpu_desc.pa_bits = CPUID_PA_BITS(val);
-	cpu_desc.va_bits = CPUID_VA_BITS(val);
-
-	for (i = 0; i < VENDOR_ID_MAX; i++) {
-		val = cpuid(GET_VENDOR_ID, i);
-		memcpy(cpu_desc.vendor_id + (i * 8), &val, 8);
+	dt_virt = (void *)__dtb_start;
+	if (!arch_dtb_verify(dt_virt, false) ||
+			!early_init_dt_verify(dt_virt)) {
+		pr_crit("Invalid DTB(built-in) at virtual address 0x%lx\n",
+				(unsigned long)dt_virt);
+		while (true)
+			cpu_relax();
 	}
 
-	for (i = 0; i < MODEL_MAX; i++) {
-		val = cpuid(GET_MODEL, i);
-		memcpy(cpu_desc.model_id + (i * 8), &val, 8);
-	}
+	/* Parse {size,address}-cells */
+	early_init_dt_scan_root();
 
-	cpu_desc.frequency = cpuid(GET_CPU_FREQ, 0) * 1000UL * 1000UL;
-
-	for (i = 0; i < NR_CPUS; i++) {
-		c = &(cpu_data[i].icache);
-		val = cpuid(GET_CACHE_INFO, L1_ICACHE);
-		c->size = CACHE_SIZE(val);
-		c->linesz = 1 << (CACHE_LINE_BITS(val));
-		c->sets = 1 << (CACHE_INDEX_BITS(val));
-		c->ways = c->size / c->sets / c->linesz;
-
-		c = &(cpu_data[i].dcache);
-		val = cpuid(GET_CACHE_INFO, L1_DCACHE);
-		c->size = CACHE_SIZE(val);
-		c->linesz = 1 << (CACHE_LINE_BITS(val));
-		c->sets = 1 << (CACHE_INDEX_BITS(val));
-		c->ways = c->size / c->sets / c->linesz;
-
-		c = &(cpu_data[i].scache);
-		val = cpuid(GET_CACHE_INFO, L2_CACHE);
-		c->size = CACHE_SIZE(val);
-		c->linesz = 1 << (CACHE_LINE_BITS(val));
-		c->sets = 1 << (CACHE_INDEX_BITS(val));
-		c->ways = c->size / c->sets / c->linesz;
-
-		c = &(cpu_data[i].tcache);
-		val = cpuid(GET_CACHE_INFO, L3_CACHE);
-		c->size = CACHE_SIZE(val);
-		c->linesz = 1 << (CACHE_LINE_BITS(val));
-		c->sets = 1 << (CACHE_INDEX_BITS(val));
-		c->ways = c->size / c->sets / c->linesz;
-	}
+	name = of_flat_dt_get_machine_name();
+	if (name)
+		pr_info("DTB(built-in): Machine model: %s\n", name);
 }
 
+static void __init device_tree_init(void)
+{
+	/**
+	 * Built-in DTB is placed in init data, so we need
+	 * to copy it.
+	 */
+	if (IS_ENABLED(CONFIG_BUILTIN_DTB))
+		unflatten_and_copy_device_tree();
+	else
+		unflatten_device_tree();
+}
+
+#ifdef CONFIG_SUBARCH_C3B
 static void __init setup_run_mode(void)
 {
-	if (*(unsigned long *)MMSIZE) {
+	if (*(unsigned long *)MM_SIZE) {
 		static_branch_disable(&run_mode_host_key);
-		if (*(unsigned long *)MMSIZE & EMUL_FLAG) {
+		if (*(unsigned long *)MM_SIZE & EMUL_FLAG) {
 			pr_info("run mode: emul\n");
 			static_branch_disable(&run_mode_guest_key);
 			static_branch_enable(&run_mode_emul_key);
@@ -693,64 +626,28 @@ static void __init setup_run_mode(void)
 		static_branch_disable(&run_mode_emul_key);
 	}
 }
-
-static void __init setup_socket_info(void)
+#elif CONFIG_SUBARCH_C4
+static void __init setup_run_mode(void)
 {
-	int i;
-	int numsockets = sw64_chip->get_cpu_num();
-
-	memset(socket_desc, 0, MAX_NUMSOCKETS * sizeof(struct socket_desc_t));
-
-	for (i = 0; i < numsockets; i++) {
-		socket_desc[i].is_online = 1;
-		if (sw64_chip_init->early_init.get_node_mem)
-			socket_desc[i].socket_mem = sw64_chip_init->early_init.get_node_mem(i);
-	}
-}
-
-#ifdef CONFIG_BLK_DEV_INITRD
-static void __init reserve_mem_for_initrd(void)
-{
-	int ret;
-
-	initrd_start = sunway_boot_params->initrd_start;
-	if (initrd_start) {
-		initrd_start = __pa(initrd_start) + PAGE_OFFSET;
-		initrd_end = initrd_start + sunway_boot_params->initrd_size;
-		pr_info("Initial ramdisk at: 0x%px (%llu bytes)\n",
-				(void *)initrd_start, sunway_boot_params->initrd_size);
-
-		ret = add_memmap_region(__pa(initrd_start), initrd_end - initrd_start, memmap_initrd);
-		if (ret)
-			pr_err("Add initrd area [mem %#018lx-%#018lx] to memmap region failed.\n",
-				__pa(initrd_start), __pa(initrd_end - 1));
-	}
-}
-#endif /* CONFIG_BLK_DEV_INITRD */
-
-#ifdef CONFIG_SUBARCH_C3B
-#if defined(CONFIG_KVM) || defined(CONFIG_KVM_MODULE)
-static int __init early_kvm_reserved_mem(char *p)
-{
-	if (!p) {
-		pr_err("Config string not provided\n");
-		return -EINVAL;
+	if (rvpcr() >> VPCR_SHIFT) {
+		pr_info("run mode: guest\n");
+		static_branch_disable(&run_mode_host_key);
+		static_branch_disable(&run_mode_emul_key);
+		static_branch_enable(&run_mode_guest_key);
+	} else if (sunway_boot_magic == 0xA2024) {
+		pr_info("run mode: emul\n");
+		static_branch_disable(&run_mode_host_key);
+		static_branch_disable(&run_mode_guest_key);
+		static_branch_enable(&run_mode_emul_key);
+		sunway_boot_magic = 0xDEED2024;
+	} else {
+		pr_info("run mode: host\n");
+		static_branch_disable(&run_mode_guest_key);
+		static_branch_disable(&run_mode_emul_key);
+		static_branch_enable(&run_mode_host_key);
 	}
 
-	kvm_mem_size = memparse(p, &p);
-	if (*p != '@')
-		return -EINVAL;
-	kvm_mem_base = memparse(p + 1, &p);
-	return 0;
 }
-early_param("kvm_mem", early_kvm_reserved_mem);
-
-void __init sw64_kvm_reserve(void)
-{
-	kvm_cma_declare_contiguous(kvm_mem_base, kvm_mem_size, 0,
-			PAGE_SIZE, 0, "sw64_kvm_cma", &sw64_kvm_cma);
-}
-#endif
 #endif
 
 void __init
@@ -763,18 +660,16 @@ setup_arch(char **cmdline_p)
 	trap_init();
 
 	jump_label_init();
-	setup_cpu_info();
 	setup_run_mode();
 	setup_chip_ops();
-	setup_socket_info();
-	show_socket_mem_layout();
-	sw64_chip_init->early_init.setup_core_map(&core_start);
-	if (is_guest_or_emul())
-		get_vt_smp_info();
 
 	setup_sched_clock();
 
-	setup_machine_fdt();
+	/* Early initialization for device tree */
+	setup_firmware_fdt();
+
+	/* Now we get the final boot_command_line */
+	*cmdline_p = boot_command_line;
 
 	/* Register a call for panic conditions. */
 	atomic_notifier_chain_register(&panic_notifier_list,
@@ -782,56 +677,26 @@ setup_arch(char **cmdline_p)
 
 	callback_init();
 
-	/* command line */
-	if (!sunway_boot_params->cmdline)
-		sunway_boot_params->cmdline = (unsigned long)COMMAND_LINE;
-
-	strscpy(boot_command_line, (char *)sunway_boot_params->cmdline, COMMAND_LINE_SIZE);
-
-#if IS_ENABLED(CONFIG_CMDLINE_BOOL)
-#if IS_ENABLED(CONFIG_CMDLINE_OVERRIDE)
-	strscpy(boot_command_line, builtin_cmdline, COMMAND_LINE_SIZE);
-	strscpy((char *)sunway_boot_params->cmdline, boot_command_line, COMMAND_LINE_SIZE);
-#else
-	if (builtin_cmdline[0]) {
-		/* append builtin to boot loader cmdline */
-		strlcat(boot_command_line, " ", COMMAND_LINE_SIZE);
-		strlcat(boot_command_line, builtin_cmdline, COMMAND_LINE_SIZE);
-	}
-#endif /* CMDLINE_EXTEND */
-#endif
-
-	strscpy(command_line, boot_command_line, COMMAND_LINE_SIZE);
-	*cmdline_p = command_line;
-
 	/*
 	 * Process command-line arguments.
 	 */
 	parse_early_param();
 
-	/* Find our memory.  */
-	mem_detect();
+	efi_init();
 
-#ifdef CONFIG_PCI
-	reserve_mem_for_pci();
-#endif
+	/**
+	 * Switch to builtin-in DTB if configured.
+	 * Must be placed after efi_init(), Since
+	 * efi_init() may parse boot params from DTB
+	 * provided by firmware.
+	 */
+	if (IS_ENABLED(CONFIG_BUILTIN_DTB))
+		setup_builtin_fdt();
 
-#ifdef CONFIG_BLK_DEV_INITRD
-	reserve_mem_for_initrd();
-#endif
+	/* Decide legacy IO base addr based on chips */
+	setup_legacy_io();
 
 	sw64_memblock_init();
-
-	reserve_crashkernel();
-
-	/* Reserve large chunks of memory for use by CMA for KVM. */
-#ifdef CONFIG_SUBARCH_C3B
-#if defined(CONFIG_KVM) || defined(CONFIG_KVM_MODULE)
-	sw64_kvm_reserve();
-#endif
-#endif
-
-	efi_init();
 
 	/* Try to upgrade ACPI tables via initrd */
 	acpi_table_upgrade();
@@ -839,11 +704,10 @@ setup_arch(char **cmdline_p)
 	/* Parse the ACPI tables for possible boot-time configuration */
 	acpi_boot_table_init();
 
-#ifdef CONFIG_SMP
+	if (acpi_disabled)
+		device_tree_init();
+
 	setup_smp();
-#else
-	store_cpu_data(0);
-#endif
 
 	sw64_numa_init();
 
@@ -881,88 +745,7 @@ setup_arch(char **cmdline_p)
 
 	/* Default root filesystem to sda2.  */
 	ROOT_DEV = MKDEV(SCSI_DISK0_MAJOR, 2);
-
-	if (acpi_disabled) {
-#ifdef CONFIG_NUMA
-		cpu_set_node();
-#endif
-		device_tree_init();
-	}
 }
-
-
-static int
-show_cpuinfo(struct seq_file *f, void *slot)
-{
-	int i;
-	unsigned long cpu_freq;
-
-	cpu_freq = cpuid(GET_CPU_FREQ, 0);
-
-	for_each_online_cpu(i) {
-		/*
-		 * glibc reads /proc/cpuinfo to determine the number of
-		 * online processors, looking for lines beginning with
-		 * "processor".  Give glibc what it expects.
-		 */
-		seq_printf(f, "processor\t: %u\n"
-				"vendor_id\t: %s\n"
-				"cpu family\t: %d\n"
-				"model\t\t: %u\n"
-				"model name\t: %s CPU @ %lu.%lu%luGHz\n"
-				"cpu variation\t: %u\n"
-				"cpu revision\t: %u\n",
-				i, cpu_desc.vendor_id, cpu_desc.family,
-				cpu_desc.model, cpu_desc.model_id,
-				cpu_freq / 1000, (cpu_freq % 1000) / 100,
-				(cpu_freq % 100) / 10,
-				cpu_desc.arch_var, cpu_desc.arch_rev);
-		seq_printf(f, "cpu MHz\t\t: %lu.00\n"
-				"cache size\t: %u KB\n"
-				"physical id\t: %d\n"
-				"bogomips\t: %lu.%02lu\n",
-				get_cpu_freq() / 1000 / 1000, cpu_data[i].tcache.size >> 10,
-				cpu_topology[i].package_id,
-				loops_per_jiffy / (500000/HZ),
-				(loops_per_jiffy / (5000/HZ)) % 100);
-
-		seq_printf(f, "flags\t\t: fpu simd vpn upn cpuid\n");
-		seq_printf(f, "page size\t: %d\n", 8192);
-		seq_printf(f, "cache_alignment\t: %d\n", cpu_data[i].tcache.linesz);
-		seq_printf(f, "address sizes\t: %u bits physical, %u bits virtual\n\n",
-				cpu_desc.pa_bits, cpu_desc.va_bits);
-	}
-	return 0;
-}
-
-/*
- * We show only CPU #0 info.
- */
-static void *
-c_start(struct seq_file *f, loff_t *pos)
-{
-	return *pos < 1 ? (void *)1 : NULL;
-}
-
-static void *
-c_next(struct seq_file *f, void *v, loff_t *pos)
-{
-	(*pos)++;
-	return NULL;
-}
-
-static void
-c_stop(struct seq_file *f, void *v)
-{
-}
-
-const struct seq_operations cpuinfo_op = {
-	.start	= c_start,
-	.next	= c_next,
-	.stop	= c_stop,
-	.show	= show_cpuinfo,
-};
-
 
 static int
 sw64_panic_event(struct notifier_block *this, unsigned long event, void *ptr)
@@ -1002,6 +785,28 @@ static int __init debugfs_sw64(void)
 	return 0;
 }
 arch_initcall(debugfs_sw64);
+
+static int __init debugfs_mclk_init(void)
+{
+	struct dentry *dir = sw64_debugfs_dir;
+	static u64 mclk_mhz, mclk_hz;
+
+	if (!dir)
+		return -ENODEV;
+
+	if (sunway_boot_magic != 0xDEED2024UL) {
+		mclk_mhz = *((unsigned char *)__va(MB_MCLK));
+		mclk_hz = mclk_mhz * 1000000;
+		debugfs_create_u64("mclk", 0644, dir, &mclk_mhz);
+		debugfs_create_u64("mclk_hz", 0644, dir, &mclk_hz);
+	} else {
+		mclk_hz = sunway_mclk_hz;
+		debugfs_create_u64("mclk_hz", 0644, dir, &mclk_hz);
+	}
+
+	return 0;
+}
+late_initcall(debugfs_mclk_init);
 #endif
 
 #ifdef CONFIG_OF
@@ -1013,49 +818,3 @@ static int __init sw64_of_init(void)
 core_initcall(sw64_of_init);
 #endif
 
-#ifdef CONFIG_SUBARCH_C3B
-#if defined(CONFIG_KVM) || defined(CONFIG_KVM_MODULE)
-static int __init sw64_kvm_pool_init(void)
-{
-	int status = 0;
-	unsigned long kvm_pool_virt;
-	struct page *base_page, *end_page, *p;
-
-	if (!sw64_kvm_cma)
-		goto out;
-
-	kvm_pool_virt = (unsigned long)kvm_mem_base;
-
-	sw64_kvm_pool = gen_pool_create(PAGE_SHIFT, -1);
-	if (!sw64_kvm_pool)
-		goto out;
-
-	status = gen_pool_add_virt(sw64_kvm_pool, kvm_pool_virt, kvm_mem_base,
-			kvm_mem_size, -1);
-	if (status < 0) {
-		pr_err("failed to add memory chunks to sw64 kvm pool\n");
-		gen_pool_destroy(sw64_kvm_pool);
-		sw64_kvm_pool = NULL;
-		goto out;
-	}
-	gen_pool_set_algo(sw64_kvm_pool, gen_pool_best_fit, NULL);
-
-	base_page = pfn_to_page(kvm_mem_base >> PAGE_SHIFT);
-	end_page  = pfn_to_page((kvm_mem_base + kvm_mem_size - 1) >> PAGE_SHIFT);
-
-	p = base_page;
-	while (p <= end_page && page_ref_count(p) == 0) {
-		set_page_count(p, 1);
-		page_mapcount_reset(p);
-		SetPageReserved(p);
-		p++;
-	}
-
-	return status;
-
-out:
-	return -ENOMEM;
-}
-core_initcall_sync(sw64_kvm_pool_init);
-#endif
-#endif

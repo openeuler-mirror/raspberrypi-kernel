@@ -259,24 +259,23 @@ static unsigned long __read_pending(struct kvm_vcpu *vcpu,
 
 			if (irq->hw && vgic_irq_is_sgi(irq->intid) &&
 			    (kvm_vgic_global_state.flags &
-			     FLAGS_WORKAROUND_HIP09_ERRATUM_162200806)) {
+			     FLAGS_WORKAROUND_HIP10_ERRATUM_162200806)) {
 				void *va;
 				u8 *ptr;
 				int mask;
-				bool is_pending;
 
 				mask = BIT(irq->intid % BITS_PER_BYTE);
 				va = page_address(vpe->vpt_page);
 				ptr = va + VIRTUAL_SGI_PENDING_OFFSET +
 				      irq->intid / BITS_PER_BYTE;
-				is_pending = *ptr & mask;
-			}
-
-			val = false;
-			err = irq_get_irqchip_state(irq->host_irq,
+				val = *ptr & mask;
+			} else {
+				val = false;
+				err = irq_get_irqchip_state(irq->host_irq,
 						    IRQCHIP_STATE_PENDING,
 						    &val);
-			WARN_RATELIMIT(err, "IRQ %d", irq->host_irq);
+				WARN_RATELIMIT(err, "IRQ %d", irq->host_irq);
+			}
 		} else if (!is_user && vgic_irq_is_mapped_level(irq)) {
 			val = vgic_get_phys_line_level(irq);
 		} else {

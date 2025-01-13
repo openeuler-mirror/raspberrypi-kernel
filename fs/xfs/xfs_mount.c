@@ -1147,11 +1147,11 @@ int
 xfs_mod_freecounter(
 	struct xfs_mount	*mp,
 	struct percpu_counter	*counter,
-	int64_t			delta,
+	int64_t		delta,
 	bool			rsvd)
 {
 	int64_t			lcounter;
-	long long		res_used;
+	uint64_t		res_used;
 	uint64_t		set_aside = 0;
 	s32			batch;
 	bool			has_resv_pool;
@@ -1173,9 +1173,9 @@ xfs_mod_freecounter(
 		}
 
 		spin_lock(&mp->m_sb_lock);
-		res_used = (long long)(mp->m_resblks - mp->m_resblks_avail);
+		res_used = mp->m_resblks - mp->m_resblks_avail;
 
-		if (res_used > delta) {
+		if (res_used > (uint64_t)delta) {
 			mp->m_resblks_avail += delta;
 		} else {
 			delta -= res_used;

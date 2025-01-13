@@ -21,7 +21,7 @@
 
 #include <asm/vdso.h>
 
-extern char vdso_start, vdso_end;
+extern char vdso_start[], vdso_end[];
 static unsigned long vdso_pages;
 static struct page **vdso_pagelist;
 
@@ -36,18 +36,53 @@ struct vdso_data *vdso_data = &vdso_data_store.data;
 
 static struct vm_special_mapping vdso_spec[2];
 
+#ifdef CONFIG_SUBARCH_C3B
+#define V_NODE_SHIFT	6
+static void init_cpu_map(void)
+{
+
+	int i, whami, domain;
+	unsigned int shift, mask;
+
+	if (is_in_host())
+		shift = DOMAIN_ID_SHIFT;
+	else
+		shift = V_NODE_SHIFT;
+	mask = (1 << shift) - 1;
+
+	vdso_data_write_begin(vdso_data);
+	for (i = 0; i < num_possible_cpus(); i++) {
+		domain = cpu_to_rcid(i) >> shift;
+		whami = (domain << DOMAIN_ID_SHIFT) | (cpu_to_rcid(i) & mask);
+		vdso_data->vdso_whami_to_cpu[whami] = i;
+		vdso_data->vdso_whami_to_node[whami] = domain;
+	}
+	vdso_data_write_end(vdso_data);
+}
+#else
+static void init_cpu_map(void)
+{
+	int i;
+
+	vdso_data_write_begin(vdso_data);
+	for (i = 0; i < num_possible_cpus(); i++)
+		vdso_data->vdso_cpu_to_node[i] = (cpu_to_rcid(i) & DOMAIN_ID_MASK) >> DOMAIN_ID_SHIFT;
+	vdso_data_write_end(vdso_data);
+}
+#endif
+
 static int __init vdso_init(void)
 {
 	int i;
 
-	if (memcmp(&vdso_start, "\177ELF", 4)) {
+	if (memcmp(vdso_start, "\177ELF", 4)) {
 		pr_err("vDSO is not a valid ELF object!\n");
 		return -EINVAL;
 	}
 
-	vdso_pages = (&vdso_end - &vdso_start) >> PAGE_SHIFT;
+	vdso_pages = (vdso_end - vdso_start) >> PAGE_SHIFT;
 	pr_info("vdso: %ld pages (%ld code @ %p, %ld data @ %p)\n",
-		vdso_pages + 1, vdso_pages, &vdso_start, 1L, vdso_data);
+		vdso_pages + 1, vdso_pages, vdso_start, 1L, vdso_data);
 
 	/* Allocate the vDSO pagelist, plus a page for the data. */
 	vdso_pagelist = kcalloc(vdso_pages + 1, sizeof(struct page *),
@@ -60,7 +95,7 @@ static int __init vdso_init(void)
 
 	/* Grab the vDSO code pages. */
 	for (i = 0; i < vdso_pages; i++)
-		vdso_pagelist[i + 1] = virt_to_page(&vdso_start + i * PAGE_SIZE);
+		vdso_pagelist[i + 1] = virt_to_page(vdso_start + i * PAGE_SIZE);
 
 	/* Populate the special mapping structures */
 	vdso_spec[0] = (struct vm_special_mapping) {
@@ -72,6 +107,8 @@ static int __init vdso_init(void)
 		.name	= "[vdso]",
 		.pages	= &vdso_pagelist[1],
 	};
+
+	init_cpu_map();
 
 	return 0;
 }
@@ -119,25 +156,3 @@ up_fail:
 	return PTR_ERR(ret);
 }
 
-void update_vsyscall(struct timekeeper *tk)
-{
-	vdso_data_write_begin(vdso_data);
-
-	vdso_data->xtime_sec = tk->xtime_sec;
-	vdso_data->xtime_nsec = tk->tkr_mono.xtime_nsec;
-	vdso_data->wall_to_mono_sec = tk->wall_to_monotonic.tv_sec;
-	vdso_data->wall_to_mono_nsec = tk->wall_to_monotonic.tv_nsec;
-	vdso_data->cs_shift = tk->tkr_mono.shift;
-
-	vdso_data->cs_mult = tk->tkr_mono.mult;
-	vdso_data->cs_cycle_last = tk->tkr_mono.cycle_last;
-	vdso_data->cs_mask = tk->tkr_mono.mask;
-
-	vdso_data_write_end(vdso_data);
-}
-
-void update_vsyscall_tz(void)
-{
-	vdso_data->tz_minuteswest = sys_tz.tz_minuteswest;
-	vdso_data->tz_dsttime = sys_tz.tz_dsttime;
-}

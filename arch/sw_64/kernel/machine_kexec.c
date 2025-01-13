@@ -10,10 +10,15 @@
 #include <linux/delay.h>
 #include <linux/irq.h>
 #include <linux/reboot.h>
+#include <linux/libfdt.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
+#include <linux/efi.h>
+#include <linux/memblock.h>
 
 #include <asm/cacheflush.h>
+#include <asm/platform.h>
 
-extern void *kexec_control_page;
 extern const unsigned char relocate_new_kernel[];
 extern const size_t relocate_new_kernel_size;
 
@@ -21,6 +26,7 @@ extern unsigned long kexec_start_address;
 extern unsigned long kexec_indirection_page;
 
 static atomic_t waiting_for_crash_ipi;
+static void *kexec_control_page;
 
 #ifdef CONFIG_SMP
 extern struct smp_rcb_struct *smp_rcb;
@@ -40,6 +46,72 @@ static void kexec_smp_down(void *ignored)
 	reset_cpu(cpu);
 }
 #endif
+
+#define KTEXT_MAX	KERNEL_IMAGE_SIZE
+
+void __init kexec_control_page_init(void)
+{
+	phys_addr_t addr;
+
+	addr = memblock_phys_alloc_range(KEXEC_CONTROL_PAGE_SIZE, PAGE_SIZE,
+					0, 0);
+	kexec_control_page = (void *)(__START_KERNEL_map + addr);
+}
+
+/*
+ * reserve_crashkernel() - reserves memory are for crash kernel
+ *
+ * This function reserves memory area given in "crashkernel=" kernel command
+ * line parameter. The memory reserved is used by a dump capture kernel when
+ * primary kernel is crashing.
+ */
+void __init reserve_crashkernel(void)
+{
+	unsigned long long crash_size, crash_base;
+	unsigned long long mem_size = memblock_phys_mem_size();
+	int ret;
+
+	ret = parse_crashkernel(boot_command_line, mem_size,
+			&crash_size, &crash_base);
+	if (ret || !crash_size)
+		return;
+
+	if (!crash_size) {
+		pr_warn("size of crash kernel memory unspecified, no memory reserved for crash kernel\n");
+		return;
+	}
+	if (!crash_base) {
+		pr_warn("base of crash kernel memory unspecified, no memory reserved for crash kernel\n");
+		return;
+	}
+
+	if (!memblock_is_region_memory(crash_base, crash_size))
+		memblock_add(crash_base, crash_size);
+
+	ret = memblock_reserve(crash_base, crash_size);
+	if (ret < 0) {
+		pr_warn("crashkernel reservation failed - memory is in use [mem %#018llx-%#018llx]\n",
+				crash_base, crash_base + crash_size - 1);
+		return;
+	}
+
+	pr_info("Reserving %ldMB of memory at %ldMB for crashkernel (System RAM: %ldMB)\n",
+			(unsigned long)(crash_size >> 20),
+			(unsigned long)(crash_base >> 20),
+			(unsigned long)(mem_size >> 20));
+
+	ret = add_memmap_region(crash_base, crash_size, memmap_crashkernel);
+	if (ret)
+		pr_warn("Add crash kernel area [mem %#018llx-%#018llx] to memmap region failed.\n",
+				crash_base, crash_base + crash_size - 1);
+
+	if (crash_base < PCI_LEGACY_IO_SIZE)
+		pr_warn("Crash base should be greater than or equal to %#lx\n", PCI_LEGACY_IO_SIZE);
+
+	crashk_res.start = crash_base;
+	crashk_res.end = crash_base + crash_size - 1;
+	insert_resource(&iomem_resource, &crashk_res);
+}
 
 int machine_kexec_prepare(struct kimage *kimage)
 {
@@ -120,7 +192,6 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 	cpu = smp_processor_id();
 	local_irq_disable();
-	kernel_restart_prepare(NULL);
 	atomic_set(&waiting_for_crash_ipi, num_online_cpus() - 1);
 	smp_call_function(machine_crash_nonpanic_core, NULL, false);
 	msecs = 1000; /* Wait at most a second for the other cpus to stop */
@@ -143,15 +214,130 @@ void machine_crash_shutdown(struct pt_regs *regs)
 
 #define phys_to_ktext(pa)    (__START_KERNEL_map + (pa))
 
-typedef void (*noretfun_t)(void) __noreturn;
+typedef void (*noretfun_t)(unsigned long, unsigned long) __noreturn;
+
+/**
+ * Current kernel does not yet have a common implementation for
+ * this function. So, make an arch-specific one.
+ */
+static void *arch_kexec_alloc_and_setup_fdt(unsigned long initrd_start,
+		unsigned long initrd_size, const char *cmdline)
+{
+	void *fdt;
+	int ret, chosen_node;
+	size_t fdt_size;
+
+	fdt_size = fdt_totalsize(initial_boot_params) +
+		(cmdline ? strlen(cmdline) : 0) + 0x1000;
+	fdt = kzalloc(fdt_size, GFP_KERNEL);
+	if (!fdt)
+		return NULL;
+
+	ret = fdt_open_into(initial_boot_params, fdt, fdt_size);
+	if (ret < 0) {
+		pr_err("Error %d setting up the new device tree\n", ret);
+		goto out;
+	}
+
+	chosen_node = fdt_path_offset(fdt, "/chosen");
+	if (chosen_node < 0) {
+		pr_err("Failed to find chosen node\n");
+		goto out;
+	}
+
+	/* update initrd params */
+	if (initrd_size) {
+		ret = fdt_setprop_u64(fdt, chosen_node, "linux,initrd-start",
+				initrd_start);
+		if (ret)
+			goto out;
+
+		ret = fdt_setprop_u64(fdt, chosen_node, "linux,initrd-end",
+				initrd_start + initrd_size);
+		if (ret)
+			goto out;
+	} else {
+		ret = fdt_delprop(fdt, chosen_node, "linux,initrd-start");
+		if (ret)
+			goto out;
+
+		ret = fdt_delprop(fdt, chosen_node, "linux,initrd-end");
+		if (ret)
+			goto out;
+	}
+
+	/* update cmdline */
+	if (cmdline) {
+		ret = fdt_setprop_string(fdt, chosen_node, "bootargs", cmdline);
+		if (ret)
+			goto out;
+	} else {
+		ret = fdt_delprop(fdt, chosen_node, "bootargs");
+		if (ret)
+			goto out;
+	}
+
+	return fdt;
+
+out:
+	kfree(fdt);
+	return NULL;
+}
+
+static void update_boot_params(void)
+{
+	struct boot_params params = { 0 };
+
+	/* Cmdline and initrd can be new */
+	params.cmdline = kexec_start_address - COMMAND_LINE_OFF;
+	params.initrd_start = *(__u64 *)(kexec_start_address - INITRD_START_OFF);
+	params.initrd_size = *(__u64 *)(kexec_start_address - INITRD_SIZE_OFF);
+
+	if (sunway_boot_magic != 0xDEED2024UL) {
+		sunway_boot_params->cmdline = params.cmdline;
+		sunway_boot_params->initrd_start = params.initrd_start;
+		sunway_boot_params->initrd_size = params.initrd_size;
+
+		params.dtb_start = sunway_boot_params->dtb_start;
+		params.efi_systab = sunway_boot_params->efi_systab;
+		params.efi_memmap = sunway_boot_params->efi_memmap;
+		params.efi_memmap_size = sunway_boot_params->efi_memmap_size;
+		params.efi_memdesc_size = sunway_boot_params->efi_memdesc_size;
+		params.efi_memdesc_version = sunway_boot_params->efi_memdesc_version;
+	} else {
+		params.dtb_start = (unsigned long)arch_kexec_alloc_and_setup_fdt(
+				params.initrd_start, params.initrd_size,
+				(const char *)params.cmdline);
+
+#ifdef CONFIG_EFI
+		early_parse_fdt_property((void *)sunway_dtb_address, "/chosen",
+			"linux,uefi-system-table", &params.efi_systab, sizeof(u64));
+		params.efi_memmap = efi.memmap.phys_map;
+		params.efi_memmap_size = efi.memmap.map_end - efi.memmap.map;
+		params.efi_memdesc_size = efi.memmap.desc_size;
+		params.efi_memdesc_version = efi.memmap.desc_version;
+#endif
+		/* update dtb base address */
+		sunway_dtb_address = params.dtb_start;
+	}
+
+	pr_info("initrd_start     = %#llx, initrd_size         = %#llx\n"
+		"dtb_start        = %#llx, efi_systab          = %#llx\n"
+		"efi_memmap       = %#llx, efi_memmap_size     = %#llx\n"
+		"efi_memdesc_size = %#llx, efi_memdesc_version = %#llx\n"
+		"cmdline          = %s\n",
+		params.initrd_start, params.initrd_size,
+		params.dtb_start, params.efi_systab,
+		params.efi_memmap, params.efi_memmap_size,
+		params.efi_memdesc_size, params.efi_memdesc_version,
+		(char *)params.cmdline);
+}
 
 void machine_kexec(struct kimage *image)
 {
 	void *reboot_code_buffer;
 	unsigned long entry;
 	unsigned long *ptr;
-	struct boot_params *params = sunway_boot_params;
-
 
 	reboot_code_buffer = kexec_control_page;
 	pr_info("reboot_code_buffer = %px\n", reboot_code_buffer);
@@ -166,20 +352,7 @@ void machine_kexec(struct kimage *image)
 	pr_info("kexec_indirection_page = %#lx, image->head=%#lx\n",
 			kexec_indirection_page, image->head);
 
-	params->cmdline = kexec_start_address - COMMAND_LINE_OFF;
-	params->initrd_start = *(__u64 *)(kexec_start_address - INITRD_START_OFF);
-	params->initrd_size = *(__u64 *)(kexec_start_address - INITRD_SIZE_OFF);
-
-	pr_info("initrd_start = %#llx, initrd_size = %#llx\n"
-		"dtb_start = %#llx, efi_systab = %#llx\n"
-		"efi_memmap = %#llx, efi_memmap_size = %#llx\n"
-		"efi_memdesc_size = %#llx, efi_memdesc_version = %#llx\n"
-		"cmdline = %#llx\n",
-		params->initrd_start, params->initrd_size,
-		params->dtb_start, params->efi_systab,
-		params->efi_memmap, params->efi_memmap_size,
-		params->efi_memdesc_size, params->efi_memdesc_version,
-		params->cmdline);
+	update_boot_params();
 
 	memcpy(reboot_code_buffer, relocate_new_kernel, relocate_new_kernel_size);
 
@@ -205,5 +378,6 @@ void machine_kexec(struct kimage *image)
 	pr_info("Will call new kernel at %08lx\n", image->start);
 	pr_info("Bye ...\n");
 	smp_wmb();
-	((noretfun_t) reboot_code_buffer)();
+	((noretfun_t) reboot_code_buffer)(sunway_boot_magic,
+		sunway_dtb_address);
 }

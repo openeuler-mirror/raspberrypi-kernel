@@ -15,7 +15,7 @@
 #define ASID_BITS	10
 #endif
 
-#include <asm/hw_init.h>
+#include <asm/cpu.h>
 #define last_asid(cpu)		(cpu_data[cpu].last_asid)
 
 #define ASID_FIRST_VERSION	(1UL << ASID_BITS)
@@ -41,10 +41,13 @@ static inline bool asid_valid(struct mm_struct *mm, unsigned int cpu)
 
 static inline void __get_new_mm_context(struct mm_struct *mm, long cpu)
 {
+	unsigned long ptbr;
 	unsigned long asid = last_asid(cpu);
 
-	if (!(++asid & ASID_MASK))
-		tbivp();
+	if (!(++asid & ASID_MASK)) {
+		ptbr = virt_to_pfn(mm->pgd);
+		wrap_asid(asid, ptbr);
+	}
 	mm->context.asid[cpu] = last_asid(cpu) = asid;
 
 }

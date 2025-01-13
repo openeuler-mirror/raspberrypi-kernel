@@ -20,6 +20,7 @@
 #define HMC_rdhtctl		0x0D
 #define HMC_wrksp		0x0E
 #define HMC_mtinten		0x0F
+#define HMC_wrap_asid		0x10
 #define HMC_load_mm		0x11
 #define HMC_tbisasid		0x14
 #define HMC_tbivpn		0x19
@@ -43,6 +44,9 @@
 #define HMC_sendii		0x3E
 #define HMC_rti			0x3F
 
+/* 0x40  - 0x7F : Hypervisor Level HMC routine */
+#define HMC_rti_nmi             0x40
+#define HMC_setup_nmi           0x41
 
 /* 0x80  - 0xBF : User Level HMC routine */
 #include <uapi/asm/hmcall.h>
@@ -50,6 +54,7 @@
 /* Following will be deprecated from user level invocation */
 #define HMC_rwreg		0x87
 #define HMC_sz_uflush		0xA8
+#define HMC_uwhami		0xA0
 #define HMC_longtime		0xB1
 
 #ifdef __KERNEL__
@@ -154,11 +159,11 @@ __CALL_HMC_VOID(sleepen);
 __CALL_HMC_VOID(mtinten);
 
 __CALL_HMC_VOID(rdktp);
-#define restore_ktp()	rdktp()
 __CALL_HMC_VOID(wrktp);
-#define save_ktp()	wrktp()
 
 __CALL_HMC_R0(rdps, unsigned long);
+__CALL_HMC_R0(rvpcr, unsigned long);
+__CALL_HMC_R0(uwhami, unsigned long);
 
 __CALL_HMC_R0(rdusp, unsigned long);
 __CALL_HMC_W1(wrusp, unsigned long);
@@ -185,6 +190,7 @@ __CALL_HMC_RW1(rdio64, unsigned long, unsigned long);
 __CALL_HMC_RW1(rdio32, unsigned int, unsigned long);
 __CALL_HMC_W2(wrent, void*, unsigned long);
 __CALL_HMC_W2(tbisasid, unsigned long, unsigned long);
+__CALL_HMC_W2(setup_nmi, unsigned long, unsigned long);
 __CALL_HMC_W1(wrkgp, unsigned long);
 __CALL_HMC_RW2(wrperfmon, unsigned long, unsigned long, unsigned long);
 __CALL_HMC_RW3(sendii, unsigned long, unsigned long, unsigned long, unsigned long);
@@ -229,6 +235,23 @@ __CALL_HMC_W1(wrtp, unsigned long);
 
 /* Invalidate all user TLB with current UPN and VPN */
 #define tbiu()		__tbi(4, /* no second argument */)
+
+#if defined(CONFIG_SUBARCH_C4)
+__CALL_HMC_W2(wrap_asid, unsigned long, unsigned long);
+static inline void save_ktp(void)
+{
+	__asm__ __volatile__("csrw $8, 0xef");
+}
+#elif defined(CONFIG_SUBARCH_C3B)
+static inline void wrap_asid(unsigned long asid, unsigned long ptbr)
+{
+	tbivp();
+}
+#define save_ktp()     wrktp()
+#endif
+
+#define set_nmi(irq)	setup_nmi(1, (irq))
+#define clear_nmi(irq)	setup_nmi(0, (irq))
 
 #endif /* !__ASSEMBLY__ */
 #endif /* __KERNEL__ */

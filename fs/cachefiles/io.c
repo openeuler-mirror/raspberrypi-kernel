@@ -12,7 +12,11 @@
 #include <linux/falloc.h>
 #include <linux/sched/mm.h>
 #include <trace/events/fscache.h>
+#include <linux/module.h>
 #include "internal.h"
+
+static bool cachefiles_buffered_ondemand = true;
+module_param_named(buffered_ondemand, cachefiles_buffered_ondemand, bool, 0644);
 
 struct cachefiles_kiocb {
 	struct kiocb		iocb;
@@ -78,6 +82,7 @@ static int cachefiles_read(struct netfs_cache_resources *cres,
 			   void *term_func_priv)
 {
 	struct cachefiles_object *object;
+	struct cachefiles_cache *cache;
 	struct cachefiles_kiocb *ki;
 	struct file *file;
 	unsigned int old_nofs;
@@ -89,6 +94,7 @@ static int cachefiles_read(struct netfs_cache_resources *cres,
 
 	fscache_count_read();
 	object = cachefiles_cres_object(cres);
+	cache = object->volume->cache;
 	file = cachefiles_cres_file(cres);
 
 	_enter("%pD,%li,%llx,%zx/%llx",
@@ -145,6 +151,9 @@ static int cachefiles_read(struct netfs_cache_resources *cres,
 	ki->term_func		= term_func;
 	ki->term_func_priv	= term_func_priv;
 	ki->was_async		= true;
+
+	if (cachefiles_in_ondemand_mode(cache) && cachefiles_buffered_ondemand)
+		ki->iocb.ki_flags &= ~IOCB_DIRECT;
 
 	if (ki->term_func)
 		ki->iocb.ki_complete = cachefiles_read_complete;
@@ -314,6 +323,9 @@ int __cachefiles_write(struct cachefiles_object *object,
 	ki->term_func_priv	= term_func_priv;
 	ki->was_async		= true;
 	ki->b_writing		= (len + (1 << cache->bshift) - 1) >> cache->bshift;
+
+	if (cachefiles_in_ondemand_mode(cache) && cachefiles_buffered_ondemand)
+		ki->iocb.ki_flags &= ~IOCB_DIRECT;
 
 	if (ki->term_func)
 		ki->iocb.ki_complete = cachefiles_write_complete;

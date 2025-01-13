@@ -1523,7 +1523,7 @@ static ssize_t acc_vf_debug_write(struct file *filp, const char __user *buffer,
 	case MB_TEST:
 		ret = acc_vf_debug_test(hisi_acc_vdev);
 		if (ret)
-			return -EINVAL;
+			return -EAGAIN;
 		break;
 	case MIG_DATA_DUMP:
 		acc_vf_dev_data_dump(hisi_acc_vdev);

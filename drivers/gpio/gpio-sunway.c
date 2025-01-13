@@ -231,11 +231,11 @@ static void sunway_irq_enable(struct irq_data *d)
 	unsigned long flags;
 	u32 val;
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	val = sunway_read(gpio, GPIO_INTEN);
 	val |= BIT(d->hwirq);
 	sunway_write(gpio, GPIO_INTEN, val);
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 }
 
 static void sunway_irq_disable(struct irq_data *d)
@@ -246,11 +246,11 @@ static void sunway_irq_disable(struct irq_data *d)
 	unsigned long flags;
 	u32 val;
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	val = sunway_read(gpio, GPIO_INTEN);
 	val &= ~BIT(d->hwirq);
 	sunway_write(gpio, GPIO_INTEN, val);
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 }
 
 static int sunway_irq_reqres(struct irq_data *d)
@@ -290,7 +290,7 @@ static int sunway_irq_set_type(struct irq_data *d, u32 type)
 		     IRQ_TYPE_LEVEL_HIGH | IRQ_TYPE_LEVEL_LOW))
 		return -EINVAL;
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	level = sunway_read(gpio, GPIO_INTTYPE_LEVEL);
 	polarity = sunway_read(gpio, GPIO_INT_POLARITY);
 
@@ -322,7 +322,7 @@ static int sunway_irq_set_type(struct irq_data *d, u32 type)
 	sunway_write(gpio, GPIO_INTTYPE_LEVEL, level);
 	if (type != IRQ_TYPE_EDGE_BOTH)
 		sunway_write(gpio, GPIO_INT_POLARITY, polarity);
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 
 	return 0;
 }
@@ -351,7 +351,7 @@ static int sunway_gpio_set_debounce(struct gpio_chip *gc,
 	unsigned long flags, val_deb;
 	unsigned long mask = BIT(offset);
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 
 	val_deb = sunway_read(gpio, GPIO_PORTA_DEBOUNCE);
 	if (debounce)
@@ -359,7 +359,7 @@ static int sunway_gpio_set_debounce(struct gpio_chip *gc,
 	else
 		sunway_write(gpio, GPIO_PORTA_DEBOUNCE, val_deb & ~mask);
 
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 
 	return 0;
 }
@@ -425,6 +425,7 @@ static void sunway_configure_irqs(struct sunway_gpio *gpio,
 
 	for (i = 0; i < 2; i++) {
 		ct = &irq_gc->chip_types[i];
+		ct->chip.name = "GPIO-INT";
 		ct->chip.irq_ack = irq_gc_ack_set_bit;
 		ct->chip.irq_mask = irq_gc_mask_set_bit;
 		ct->chip.irq_unmask = irq_gc_mask_clr_bit;
@@ -524,9 +525,7 @@ static int sunway_gpio_add_port(struct sunway_gpio *gpio,
 		return err;
 	}
 
-#ifdef CONFIG_OF_GPIO
-	port->gc.of_node = to_of_node(pp->fwnode);
-#endif
+	port->gc.fwnode = pp->fwnode;
 	port->gc.ngpio = pp->ngpio;
 	port->gc.base = pp->gpio_base;
 
@@ -647,13 +646,16 @@ static const struct of_device_id sunway_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, sunway_of_match);
 
+#ifdef CONFIG_ACPI
 static const struct acpi_device_id sunway_acpi_match[] = {
 	{"HISI0181", 0},
 	{"APMC0D07", 0},
 	{"APMC0D81", GPIO_REG_OFFSET_V2},
+	{"SUNW0002", 0},
 	{ }
 };
 MODULE_DEVICE_TABLE(acpi, sunway_acpi_match);
+#endif
 
 static int sunway_gpio_probe(struct platform_device *pdev)
 {
@@ -726,6 +728,8 @@ static int sunway_gpio_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, gpio);
 
+	dev_info(&pdev->dev, "GPIO probe succeed\n");
+
 	return 0;
 
 out_unregister:
@@ -757,7 +761,7 @@ static int sunway_gpio_suspend(struct device *dev)
 	unsigned long flags;
 	int i;
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	for (i = 0; i < gpio->nr_ports; i++) {
 		unsigned int offset;
 		unsigned int idx = gpio->ports[i].idx;
@@ -787,7 +791,7 @@ static int sunway_gpio_suspend(struct device *dev)
 				    0xffffffff & ~ctx->wake_en);
 		}
 	}
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 
 	clk_disable_unprepare(gpio->clk);
 
@@ -805,7 +809,7 @@ static int sunway_gpio_resume(struct device *dev)
 	if (!IS_ERR(gpio->clk))
 		clk_prepare_enable(gpio->clk);
 
-	spin_lock_irqsave(&gc->bgpio_lock, flags);
+	raw_spin_lock_irqsave(&gc->bgpio_lock, flags);
 	for (i = 0; i < gpio->nr_ports; i++) {
 		unsigned int offset;
 		unsigned int idx = gpio->ports[i].idx;
@@ -834,7 +838,7 @@ static int sunway_gpio_resume(struct device *dev)
 			sunway_write(gpio, GPIO_PORTA_EOI, 0xffffffff);
 		}
 	}
-	spin_unlock_irqrestore(&gc->bgpio_lock, flags);
+	raw_spin_unlock_irqrestore(&gc->bgpio_lock, flags);
 
 	return 0;
 }

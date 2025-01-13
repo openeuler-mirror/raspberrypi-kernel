@@ -8,18 +8,17 @@
 #include <linux/types.h>
 
 #include <asm/csr.h>
+#include <asm/cpu.h>
 #include <asm/debug.h>
 #include <asm/hmcall.h>
-#include <asm/hw_init.h>
 #include <asm/sw64_init.h>
 
-#define SHTCLK_RATE_KHZ	25000
-#define SHTCLK_RATE	(SHTCLK_RATE_KHZ * 1000)
+#define DEFAULT_MCLK    25000      /* Khz */
 
 #if defined(CONFIG_SUBARCH_C4)
 static u64 read_longtime(struct clocksource *cs)
 {
-	return read_csr(CSR_SHTCLOCK);
+	return sw64_read_csr(CSR_SHTCLOCK);
 }
 
 static struct clocksource clocksource_longtime = {
@@ -34,35 +33,74 @@ static struct clocksource clocksource_longtime = {
 
 static u64 notrace read_sched_clock(void)
 {
-	return read_csr(CSR_SHTCLOCK);
+	return sw64_read_csr(CSR_SHTCLOCK);
 }
+
+static int override_mclk_khz;
+static int __init setup_mclk(char *str)
+{
+	get_option(&str, &override_mclk_khz);
+
+	return 0;
+}
+early_param("mclk_khz", setup_mclk);
 
 void __init sw64_setup_clocksource(void)
 {
-	clocksource_register_khz(&clocksource_longtime, SHTCLK_RATE_KHZ);
-	sched_clock_register(read_sched_clock, BITS_PER_LONG, SHTCLK_RATE);
+	unsigned long mclk_khz;
+
+	if (sunway_mclk_hz)
+		mclk_khz = sunway_mclk_hz / 1000;
+	else
+		mclk_khz = *((unsigned char *)__va(MB_MCLK)) * 1000;
+
+	if (override_mclk_khz) {
+		mclk_khz = override_mclk_khz;
+		pr_info("Override mclk by cmdline.\n");
+	}
+
+	if (!mclk_khz)
+		mclk_khz = DEFAULT_MCLK;
+
+	pr_info("mclk: %ldKhz\n", mclk_khz);
+
+	clocksource_register_khz(&clocksource_longtime, mclk_khz);
+	sched_clock_register(read_sched_clock, BITS_PER_LONG, mclk_khz * 1000);
 }
 
 void __init setup_sched_clock(void) { }
 #elif defined(CONFIG_SUBARCH_C3B)
 #ifdef CONFIG_SMP
+#define OFFSET_LONG_TIME_START_EN	0x9000UL
+
+#define OFFSET_LONG_TIME		0x180UL
+
+#define OFFSET_GPIO_SWPORTA_DR		0x0UL
+#define OFFSET_GPIO_SWPORTA_DDR		0x200UL
+
 static u64 read_longtime(struct clocksource *cs)
 {
 	unsigned long node;
+	void __iomem *intpu_base;
 
 	node = __this_cpu_read(hard_node_id);
-	return __io_read_longtime(node);
+	intpu_base = misc_platform_get_intpu_base(node);
+
+	return readq(intpu_base + OFFSET_LONG_TIME);
 }
 
 static int longtime_enable(struct clocksource *cs)
 {
-	switch (cpu_desc.model) {
+	void __iomem *spbu_base = misc_platform_get_spbu_base(0);
+	void __iomem *gpio_base = misc_platform_get_gpio_base(0);
+
+	switch (current_cpu_data.model) {
 	case CPU_SW3231:
-		sw64_io_write(0, GPIO_SWPORTA_DR, 0);
-		sw64_io_write(0, GPIO_SWPORTA_DDR, 0xff);
+		writeq(0, gpio_base + OFFSET_GPIO_SWPORTA_DR);
+		writeq(0xff, gpio_base + OFFSET_GPIO_SWPORTA_DDR);
 		break;
 	case CPU_SW831:
-		__io_write_longtime_start_en(0, 0x1);
+		writeq(0x1, spbu_base + OFFSET_LONG_TIME_START_EN);
 		break;
 	default:
 		break;
@@ -86,7 +124,7 @@ static u64 read_vtime(struct clocksource *cs)
 {
 	unsigned long vtime_addr;
 
-	vtime_addr = IO_BASE | LONG_TIME;
+	vtime_addr = IO_BASE | INTPU_BASE | OFFSET_LONG_TIME;
 	return rdio64(vtime_addr);
 }
 
@@ -122,20 +160,18 @@ static struct clocksource clocksource_tc = {
 };
 #endif /* SMP */
 
-#define DEFAULT_MCLK	25	/* Mhz */
-
 void __init sw64_setup_clocksource(void)
 {
-	unsigned int mclk = *((unsigned char *)__va(MB_MCLK));
+	unsigned long mclk_khz = *((unsigned char *)__va(MB_MCLK)) * 1000;
 
-	if (!mclk)
-		mclk = DEFAULT_MCLK;
+	if (!mclk_khz)
+		mclk_khz = DEFAULT_MCLK;
 
 #ifdef CONFIG_SMP
 	if (is_in_host())
-		clocksource_register_khz(&clocksource_longtime, mclk * 1000);
+		clocksource_register_khz(&clocksource_longtime, mclk_khz);
 	else
-		clocksource_register_khz(&clocksource_vtime, DEFAULT_MCLK * 1000);
+		clocksource_register_khz(&clocksource_vtime, mclk_khz);
 #else
 	clocksource_register_hz(&clocksource_tc, get_cpu_freq());
 	pr_info("Setup clocksource TC, mult = %d\n", clocksource_tc.mult);
@@ -395,7 +431,6 @@ void sw64_timer_interrupt(void)
 {
 	struct clock_event_device *evt = this_cpu_ptr(&timer_events);
 
-	irq_enter();
 	if (!evt->event_handler) {
 		pr_warn("Spurious local timer interrupt on cpu %d\n",
 				smp_processor_id());
@@ -406,6 +441,4 @@ void sw64_timer_interrupt(void)
 	inc_irq_stat(timer_irqs_event);
 
 	evt->event_handler(evt);
-
-	irq_exit();
 }

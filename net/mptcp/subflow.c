@@ -904,7 +904,7 @@ create_child:
 	}
 
 	/* check for expected invariant - should never trigger, just help
-	 * catching eariler subtle bugs
+	 * catching earlier subtle bugs
 	 */
 	WARN_ON_ONCE(child && *own_req && tcp_sk(child)->is_mptcp &&
 		     (!mptcp_subflow_ctx(child) ||
@@ -1265,7 +1265,7 @@ static void mptcp_subflow_fail(struct mptcp_sock *msk, struct sock *ssk)
 	struct mptcp_subflow_context *subflow = mptcp_subflow_ctx(ssk);
 	unsigned long fail_tout;
 
-	/* greceful failure can happen only on the MPC subflow */
+	/* graceful failure can happen only on the MPC subflow */
 	if (WARN_ON_ONCE(ssk != READ_ONCE(msk->first)))
 		return;
 
@@ -1721,7 +1721,7 @@ int mptcp_subflow_create_socket(struct sock *sk, unsigned short family,
 	mptcp_sockopt_sync_locked(mptcp_sk(sk), sf->sk);
 	release_sock(sf->sk);
 
-	/* the newly created socket really belongs to the owning MPTCP master
+	/* the newly created socket really belongs to the owning MPTCP
 	 * socket, even if for additional subflows the allocation is performed
 	 * by a kernel workqueue. Adjust inode references, so that the
 	 * procfs/diag interfaces really show this one belonging to the correct

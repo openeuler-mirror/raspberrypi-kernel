@@ -47,7 +47,9 @@
 #include <linux/splice.h>
 #include <linux/huge_mm.h>
 #include <linux/pgtable.h>
+#ifndef __GENKSYMS__
 #include <linux/dynamic_pool.h>
+#endif
 #include <asm/pgalloc.h>
 #include <asm/tlbflush.h>
 #include "internal.h"

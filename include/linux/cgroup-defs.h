@@ -325,6 +325,8 @@ struct cgroup_base_stat {
 #ifdef CONFIG_SCHED_CORE
 	u64 forceidle_sum;
 #endif
+	KABI_RESERVE(1)
+	KABI_RESERVE(2)
 };
 
 /*
@@ -555,6 +557,9 @@ struct cgroup {
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
 	KABI_RESERVE(5)
+	KABI_RESERVE(6)
+	KABI_RESERVE(7)
+	KABI_RESERVE(8)
 	/* All ancestors including self */
 	struct cgroup *ancestors[];
 };
@@ -573,6 +578,10 @@ struct cgroup_root {
 	/* Unique id for this hierarchy. */
 	int hierarchy_id;
 
+	/* A list running through the active hierarchies */
+	struct list_head root_list;
+	struct rcu_head rcu;    /* Must be near the top */
+
 	/*
 	 * The root cgroup. The containing cgroup_root will be destroyed on its
 	 * release. cgrp->ancestors[0] will be used overflowing into the
@@ -589,9 +598,6 @@ struct cgroup_root {
 	/* Wait while cgroups are being destroyed */
 	wait_queue_head_t wait;
 
-	/* A list running through the active hierarchies */
-	struct list_head root_list;
-
 	/* Hierarchy-specific flags */
 	unsigned int flags;
 
@@ -605,6 +611,8 @@ struct cgroup_root {
 	KABI_RESERVE(2)
 	KABI_RESERVE(3)
 	KABI_RESERVE(4)
+	KABI_RESERVE(5)
+	KABI_RESERVE(6)
 };
 
 /*

@@ -27,14 +27,15 @@ struct pt_regs {
 	};
 	unsigned long orig_r0;
 	unsigned long orig_r19;
+	unsigned long cause;
 	/* These are saved by HMcode: */
 	unsigned long hm_ps;
 	unsigned long hm_pc;
 	unsigned long hm_gp;
-	unsigned long hm_r16;
-	unsigned long hm_r17;
-	unsigned long hm_r18;
-};
+	unsigned long earg0;
+	unsigned long earg1;
+	unsigned long earg2;
+} __aligned(16);
 
 #define arch_has_single_step()		(1)
 #define user_mode(regs) (((regs)->ps & 8) != 0)

@@ -669,11 +669,13 @@ void xint_enter_rcu(void)
 	preempt_count_add(HARDIRQ_OFFSET);
 #ifndef CONFIG_DEBUG_FEATURE_BYPASS
 	lockdep_hardirq_enter();
+#endif
 
 	if (tick_nohz_full_cpu(smp_processor_id()) ||
 	    (is_idle_task(current) && (irq_count() == HARDIRQ_OFFSET)))
 		tick_irq_enter();
 
+#ifndef CONFIG_DEBUG_FEATURE_BYPASS
 	account_hardirq_enter(current);
 #endif
 }
@@ -695,9 +697,7 @@ static inline void __xint_exit_rcu(void)
 	if (!in_interrupt() && local_softirq_pending())
 		invoke_softirq();
 
-#ifndef CONFIG_DEBUG_FEATURE_BYPASS
 	tick_irq_exit();
-#endif
 }
 
 void xint_exit_rcu(void)

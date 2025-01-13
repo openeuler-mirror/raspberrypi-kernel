@@ -15,6 +15,7 @@
 #include <asm/barrier.h>
 #include <asm/core.h>
 #include <asm/pci_impl.h>
+#include <asm/cpu.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -37,6 +38,21 @@ static unsigned long get_new_vpn_context(struct kvm_vcpu *vcpu, long cpu)
 	return next;
 }
 
+int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
+		struct kvm *kvm, int irq_source_id,
+		int level, bool line_status)
+{
+	switch (e->type) {
+	case KVM_IRQ_ROUTING_MSI:
+		if (!kvm_set_msi(e, kvm, irq_source_id, level, line_status))
+			return 0;
+		break;
+	default:
+		break;
+	}
+	return -EWOULDBLOCK;
+}
+
 int vcpu_interrupt_line(struct kvm_vcpu *vcpu, int number, bool level)
 {
 	set_bit(number, (vcpu->arch.irqs_pending));
@@ -52,19 +68,17 @@ int kvm_arch_check_processor_compat(void *opaque)
 int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e, struct kvm *kvm, int irq_source_id,
 		int level, bool line_status)
 {
-	unsigned int vcid;
-	unsigned int vcpu_idx;
+	unsigned int dest_id;
 	struct kvm_vcpu *vcpu = NULL;
-	int irq = e->msi.data & 0xff;
+	int vector = e->msi.data & 0xff;
 
-	vcid = (e->msi.address_lo & VT_MSIX_ADDR_DEST_ID_MASK) >> VT_MSIX_ADDR_DEST_ID_SHIFT;
-	vcpu_idx = vcid & 0x1f;
-	vcpu = kvm_get_vcpu(kvm, vcpu_idx);
+	dest_id = (e->msi.address_lo & VT_MSIX_ADDR_DEST_ID_MASK) >> VT_MSIX_ADDR_DEST_ID_SHIFT;
+	vcpu = kvm_get_vcpu(kvm, dest_id);
 
 	if (!vcpu)
 		return -EINVAL;
 
-	return vcpu_interrupt_line(vcpu, irq, true);
+	return vcpu_interrupt_line(vcpu, vector, true);
 }
 
 void sw64_kvm_switch_vpn(struct kvm_vcpu *vcpu)
@@ -104,7 +118,7 @@ void sw64_kvm_switch_vpn(struct kvm_vcpu *vcpu)
 	}
 }
 
-void check_vcpu_requests(struct kvm_vcpu *vcpu)
+static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 {
 	unsigned long vpn;
 	long cpu = smp_processor_id();
@@ -114,12 +128,23 @@ void check_vcpu_requests(struct kvm_vcpu *vcpu)
 			vpn = vcpu->arch.vpnc[cpu] & VPN_MASK;
 			tbivpn(0, 0, vpn);
 		}
+
+		if (kvm_dirty_ring_check_request(vcpu))
+			return 0;
 	}
+
+	return 1;
 }
 
 
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *vcpu)
 {
+	if (vcpu->arch.restart)
+		return 1;
+
+	if (vcpu->arch.vcb.vcpu_irq_disabled)
+		return 0;
+
 	return ((!bitmap_empty(vcpu->arch.irqs_pending, SWVM_IRQS) || !vcpu->arch.halted)
 			&& !vcpu->arch.power_off);
 }
@@ -156,6 +181,8 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_IRQCHIP:
 	case KVM_CAP_IOEVENTFD:
 	case KVM_CAP_SYNC_MMU:
+	case KVM_CAP_READONLY_MEM:
+	case KVM_CAP_SET_GUEST_DEBUG:
 		r = 1;
 		break;
 	case KVM_CAP_NR_VCPUS:
@@ -209,7 +236,7 @@ int kvm_arch_create_memslot(struct kvm *kvm, struct kvm_memory_slot *slot,
 
 void kvm_arch_vcpu_free(struct kvm_vcpu *vcpu)
 {
-	kvm_mmu_free_memory_caches(vcpu);
+	kvm_mmu_free_memory_cache(&vcpu->arch.mmu_page_cache);
 	hrtimer_cancel(&vcpu->arch.hrt);
 }
 
@@ -223,13 +250,11 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 	/* Set up the timer for Guest */
 	pr_info("vcpu: [%d], regs addr = %#lx, vcpucb = %#lx\n", vcpu->vcpu_id,
 			(unsigned long)&vcpu->arch.regs, (unsigned long)&vcpu->arch.vcb);
+	vcpu->arch.mmu_page_cache.gfp_zero = __GFP_ZERO;
 	vcpu->arch.vtimer_freq = cpuid(GET_CPU_FREQ, 0) * 1000UL * 1000UL;
 	hrtimer_init(&vcpu->arch.hrt, CLOCK_REALTIME, HRTIMER_MODE_ABS);
 	vcpu->arch.hrt.function = clockdev_fn;
 	vcpu->arch.tsk = current;
-
-	vcpu->arch.vcb.soft_cid = vcpu->vcpu_id;
-	vcpu->arch.vcb.vcpu_irq_disabled = 1;
 	vcpu->arch.pcpu_id = -1; /* force flush tlb for the first time */
 
 	return 0;
@@ -318,6 +343,7 @@ int kvm_arch_vcpu_ioctl_get_regs(struct kvm_vcpu *vcpu, struct kvm_regs *regs)
 int kvm_arch_vcpu_ioctl_set_guest_debug(struct kvm_vcpu *vcpu,
 						struct kvm_guest_debug *dbg)
 {
+	trace_kvm_set_guest_debug(vcpu, dbg->control);
 	return 0;
 }
 
@@ -362,9 +388,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		}
 
 		if (ret <= 0) {
-			local_irq_enable();
-			preempt_enable();
-			continue;
+			goto exit;
 		}
 
 		memset(&hargs, 0, sizeof(hargs));
@@ -384,7 +408,14 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		vcpu->arch.halted = 0;
 
 		sw64_kvm_switch_vpn(vcpu);
-		check_vcpu_requests(vcpu);
+		ret = check_vcpu_requests(vcpu);
+		if (ret <= 0) {
+exit:
+			local_irq_enable();
+			preempt_enable();
+			continue;
+		}
+
 		guest_enter_irqoff();
 
 		/* update aptp before the guest runs */
@@ -503,13 +534,6 @@ vm_fault_t kvm_arch_vcpu_fault(struct kvm_vcpu *vcpu, struct vm_fault *vmf)
 	return VM_FAULT_SIGBUS;
 }
 
-void kvm_arch_flush_remote_tlbs_memslot(struct kvm *kvm,
-					struct kvm_memory_slot *memslot)
-{
-	/* Let implementation handle TLB/GVA invalidation */
-	kvm_arch_flush_shadow_memslot(kvm, memslot);
-}
-
 int kvm_dev_ioctl_check_extension(long ext)
 {
 	int r;
@@ -549,6 +573,8 @@ int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_level,
 	bool level = irq_level->level;
 
 	irq_num = irq;
+	trace_kvm_irq_line(0, irq_num, irq_level->level);
+
 	/* target core for Intx is core0 */
 	vcpu = kvm_get_vcpu(kvm, 0);
 	if (!vcpu)

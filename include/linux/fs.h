@@ -1224,7 +1224,10 @@ enum {
 #define SB_FREEZE_LEVELS (SB_FREEZE_COMPLETE - 1)
 
 struct sb_writers {
-	unsigned short			frozen;		/* Is sb frozen? */
+	KABI_REPLACE2(unsigned short	frozen,
+		unsigned char		frozen,		/* Is sb frozen? */
+		unsigned char		frozen_ro)	/* Was sb read-only
+							 * when frozen? */
 	unsigned short			freeze_holders;	/* Who froze fs? */
 	struct percpu_rw_semaphore	rw_sem[SB_FREEZE_LEVELS];
 };
@@ -3580,6 +3583,23 @@ static inline void fs_file_read_do_trace(struct kiocb *iocb)
 #else
 static inline void fs_file_read_update_args_by_trace(struct kiocb *iocb) {}
 static inline void fs_file_read_do_trace(struct kiocb *iocb) {}
+#endif
+
+#if IS_ENABLED(CONFIG_EROFS_FS)
+extern bool erofs_enabled;
+#endif
+
+#if IS_ENABLED(CONFIG_CACHEFILES_ONDEMAND)
+extern bool cachefiles_ondemand_enabled;
+static inline bool cachefiles_ondemand_is_enabled(void)
+{
+	return READ_ONCE(cachefiles_ondemand_enabled);
+}
+#else
+static inline bool cachefiles_ondemand_is_enabled(void)
+{
+	return false;
+}
 #endif
 
 #endif /* _LINUX_FS_H */

@@ -1774,6 +1774,8 @@ static inline void vma_set_access_pid_bit(struct vm_area_struct *vma)
 		__set_bit(pid_bit, &vma->numab_state->access_pids[1]);
 	}
 }
+
+bool folio_use_access_time(struct folio *folio);
 #else /* !CONFIG_NUMA_BALANCING */
 static inline int folio_xchg_last_cpupid(struct folio *folio, int cpupid)
 {
@@ -1826,6 +1828,10 @@ static inline bool cpupid_match_pid(struct task_struct *task, int cpupid)
 
 static inline void vma_set_access_pid_bit(struct vm_area_struct *vma)
 {
+}
+static inline bool folio_use_access_time(struct folio *folio)
+{
+	return false;
 }
 #endif /* CONFIG_NUMA_BALANCING */
 
@@ -3890,8 +3896,9 @@ void *sparse_buffer_alloc(unsigned long size);
 struct page * __populate_section_memmap(unsigned long pfn,
 		unsigned long nr_pages, int nid, struct vmem_altmap *altmap,
 		struct dev_pagemap *pgmap);
-void pmd_init(void *addr);
 void pud_init(void *addr);
+void pmd_init(void *addr);
+void kernel_pte_init(void *addr);
 pgd_t *vmemmap_pgd_populate(unsigned long addr, int node);
 p4d_t *vmemmap_p4d_populate(pgd_t *pgd, unsigned long addr, int node);
 pud_t *vmemmap_pud_populate(p4d_t *p4d, unsigned long addr, int node);

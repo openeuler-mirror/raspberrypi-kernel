@@ -46,6 +46,8 @@ struct flowi_common {
 
 	KABI_RESERVE(1)
 	KABI_RESERVE(2)
+	KABI_RESERVE(3)
+	KABI_RESERVE(4)
 };
 
 union flowi_uli {

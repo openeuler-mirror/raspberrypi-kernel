@@ -165,7 +165,7 @@ void virtcca_smmu_cmdq_write_entries(struct arm_smmu_device *smmu, u64 *cmds,
 bool virtcca_smmu_write_msi_msg(struct msi_desc *desc, struct msi_msg *msg);
 void _arm_smmu_write_msi_msg(struct msi_desc *desc, struct msi_msg *msg);
 void virtcca_smmu_device_init(struct platform_device *pdev,
-	struct arm_smmu_device *smmu, resource_size_t ioaddr, bool resume, bool disable_bypass);
+	struct arm_smmu_device *smmu, resource_size_t ioaddr, bool resume);
 
 static inline bool virtcca_smmu_enable(struct arm_smmu_device *smmu)
 {

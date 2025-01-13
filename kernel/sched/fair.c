@@ -145,13 +145,14 @@ int __weak arch_asym_cpu_priority(int cpu)
 
 #ifdef CONFIG_QOS_SCHED
 
-static DEFINE_PER_CPU_SHARED_ALIGNED(struct list_head, qos_throttled_cfs_rq);
+static DEFINE_PER_CPU_SECTION(struct list_head, qos_throttled_cfs_rq, PER_CPU_SHARED_ALIGNED_SECTION) __attribute__((__aligned__(128)));
 static DEFINE_PER_CPU_SHARED_ALIGNED(struct hrtimer, qos_overload_timer);
 static DEFINE_PER_CPU(int, qos_cpu_overload);
 unsigned int sysctl_overload_detect_period = 5000;  /* in ms */
 unsigned int sysctl_offline_wait_interval = 100;  /* in ms */
 static int one_thousand = 1000;
 static int hundred_thousand = 100000;
+static int __unthrottle_qos_cfs_rqs(int cpu);
 static int unthrottle_qos_cfs_rqs(int cpu);
 static bool qos_smt_expelled(int this_cpu);
 #endif
@@ -675,7 +676,7 @@ static int cfs_rq_is_idle(struct cfs_rq *cfs_rq)
 
 static int se_is_idle(struct sched_entity *se)
 {
-	return 0;
+	return task_has_idle_policy(task_of(se));
 }
 
 #endif	/* CONFIG_FAIR_GROUP_SCHED */
@@ -1998,8 +1999,7 @@ bool should_numa_migrate_memory(struct task_struct *p, struct folio *folio,
 	 * The pages in slow memory node should be migrated according
 	 * to hot/cold instead of private/shared.
 	 */
-	if (sysctl_numa_balancing_mode & NUMA_BALANCING_MEMORY_TIERING &&
-	    !node_is_toptier(src_nid)) {
+	if (folio_use_access_time(folio)) {
 		struct pglist_data *pgdat;
 		unsigned long rate_limit;
 		unsigned int latency, th, def_th;
@@ -5466,13 +5466,19 @@ enqueue_entity(struct cfs_rq *cfs_rq, struct sched_entity *se, int flags)
 		if (!throttled_hierarchy(cfs_rq)) {
 			list_add_leaf_cfs_rq(cfs_rq);
 		} else {
+#ifdef CONFIG_QOS_SCHED
+			if (cfs_rq->throttled != QOS_THROTTLED) {
+#endif
 #ifdef CONFIG_CFS_BANDWIDTH
-			struct rq *rq = rq_of(cfs_rq);
+				struct rq *rq = rq_of(cfs_rq);
 
-			if (cfs_rq_throttled(cfs_rq) && !cfs_rq->throttled_clock)
-				cfs_rq->throttled_clock = rq_clock(rq);
-			if (!cfs_rq->throttled_clock_self)
-				cfs_rq->throttled_clock_self = rq_clock(rq);
+				if (cfs_rq_throttled(cfs_rq) && !cfs_rq->throttled_clock)
+					cfs_rq->throttled_clock = rq_clock(rq);
+				if (!cfs_rq->throttled_clock_self)
+					cfs_rq->throttled_clock_self = rq_clock(rq);
+#endif
+#ifdef CONFIG_QOS_SCHED
+			}
 #endif
 		}
 	}
@@ -6686,7 +6692,7 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 	 */
 	rq_clock_start_loop_update(rq);
 #ifdef CONFIG_QOS_SCHED
-	unthrottle_qos_cfs_rqs(cpu_of(rq));
+	__unthrottle_qos_cfs_rqs(cpu_of(rq));
 #endif
 
 	rcu_read_lock();
@@ -6713,9 +6719,6 @@ static void __maybe_unused unthrottle_offline_cfs_rqs(struct rq *rq)
 	rcu_read_unlock();
 
 	rq_clock_stop_loop_update(rq);
-#ifdef CONFIG_QOS_SCHED
-	unthrottle_qos_cfs_rqs(cpu_of(rq));
-#endif
 }
 
 bool cfs_task_bw_constrained(struct task_struct *p)
@@ -6858,9 +6861,6 @@ static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 
 static inline int dynamic_affinity_mode(struct task_struct *p)
 {
-	if (!prefer_cpus_valid(p))
-		return -1;
-
 	if (smart_grid_used())
 		return task_group(p)->auto_affinity->mode == 0 ? -1 : 1;
 
@@ -7321,9 +7321,6 @@ static inline struct cpumask *task_prefer_cpus(struct task_struct *p)
 
 static inline int dynamic_affinity_mode(struct task_struct *p)
 {
-	if (!prefer_cpus_valid(p))
-		return -1;
-
 	return 0;
 }
 #endif /* CONFIG_QOS_SCHED_DYNAMIC_AFFINITY */
@@ -9052,6 +9049,9 @@ static void set_task_select_cpus(struct task_struct *p, int *idlest_cpu,
 	int cpu, mode;
 
 	p->select_cpus = p->cpus_ptr;
+	if (!prefer_cpus_valid(p))
+		return;
+
 	rcu_read_lock();
 	mode = dynamic_affinity_mode(p);
 	if (mode == -1) {
@@ -9331,16 +9331,7 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	if (test_tsk_need_resched(curr))
 		return;
 
-	/* Idle tasks are by definition preempted by non-idle tasks. */
-	if (unlikely(task_has_idle_policy(curr)) &&
-	    likely(!task_has_idle_policy(p)))
-		goto preempt;
-
-	/*
-	 * Batch and idle tasks do not preempt non-idle tasks (their preemption
-	 * is driven by the tick):
-	 */
-	if (unlikely(p->policy != SCHED_NORMAL) || !sched_feat(WAKEUP_PREEMPTION))
+	if (!sched_feat(WAKEUP_PREEMPTION))
 		return;
 
 	find_matching_se(&se, &pse);
@@ -9350,7 +9341,7 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	pse_is_idle = se_is_idle(pse);
 
 	/*
-	 * Preempt an idle group in favor of a non-idle group (and don't preempt
+	 * Preempt an idle entity in favor of a non-idle entity (and don't preempt
 	 * in the inverse case).
 	 */
 	if (cse_is_idle && !pse_is_idle)
@@ -9358,9 +9349,14 @@ static void check_preempt_wakeup(struct rq *rq, struct task_struct *p, int wake_
 	if (cse_is_idle != pse_is_idle)
 		return;
 
+	/*
+	 * BATCH and IDLE tasks do not preempt others.
+	 */
+	if (unlikely(p->policy != SCHED_NORMAL))
+		return;
+
 	cfs_rq = cfs_rq_of(se);
 	update_curr(cfs_rq);
-
 	/*
 	 * XXX pick_eevdf(cfs_rq) != se ?
 	 */
@@ -9735,7 +9731,7 @@ static int __init qos_sched_smt_noexpell_setup(char *__unused)
 }
 __setup("nosmtexpell", qos_sched_smt_noexpell_setup);
 
-static bool qos_smt_check_siblings_status(int this_cpu)
+static __always_inline bool qos_smt_check_siblings_status(int this_cpu)
 {
 	int cpu;
 
@@ -14718,10 +14714,6 @@ void free_fair_sched_group(struct task_group *tg)
 	int i;
 
 	for_each_possible_cpu(i) {
-#ifdef CONFIG_QOS_SCHED
-		if (tg->cfs_rq && tg->cfs_rq[i])
-			unthrottle_qos_sched_group(tg->cfs_rq[i]);
-#endif
 		if (tg->cfs_rq)
 			kfree(tg->cfs_rq[i]);
 		if (tg->se)
@@ -14807,6 +14799,11 @@ void unregister_fair_sched_group(struct task_group *tg)
 	for_each_possible_cpu(cpu) {
 		if (tg->se[cpu])
 			remove_entity_load_avg(tg->se[cpu]);
+
+		#ifdef CONFIG_QOS_SCHED
+			if (tg->cfs_rq && tg->cfs_rq[cpu])
+				unthrottle_qos_sched_group(tg->cfs_rq[cpu]);
+		#endif
 
 		/*
 		 * Only empty task groups can be destroyed; so we can speculatively

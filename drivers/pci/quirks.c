@@ -4484,6 +4484,8 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_BROADCOM, 0x9000,
 				quirk_bridge_cavm_thrx2_pcie_root);
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_BROADCOM, 0x9084,
 				quirk_bridge_cavm_thrx2_pcie_root);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_LOONGSON, 0x3c09,
+				quirk_bridge_cavm_thrx2_pcie_root);
 
 /*
  * Intersil/Techwell TW686[4589]-based video capture cards have an empty (zero)
@@ -5229,6 +5231,8 @@ static const struct pci_dev_acs_enabled {
 	{ PCI_VENDOR_ID_MUCSE, 0x1c61, pci_quirk_mf_endpoint_acs },
 	{ PCI_VENDOR_ID_MUCSE, 0x1083, pci_quirk_mf_endpoint_acs },
 	{ PCI_VENDOR_ID_MUCSE, 0x1c83, pci_quirk_mf_endpoint_acs },
+	{ PCI_VENDOR_ID_LOONGSON, 0x3c09, pci_quirk_xgene_acs},
+	{ PCI_VENDOR_ID_LOONGSON, 0x3c19, pci_quirk_xgene_acs},
 	{ 0 }
 };
 

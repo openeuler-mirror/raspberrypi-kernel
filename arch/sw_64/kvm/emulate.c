@@ -4,6 +4,7 @@
  * Author: fire3 <fire3@example.com> yangzh <yangzh@gmail.com>
  * linhn <linhn@example.com>
  */
+#include <asm/irq_impl.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_asm.h>
 #include <linux/errno.h>
@@ -13,18 +14,8 @@ void sw64_decode(struct kvm_vcpu *vcpu, unsigned int insn, struct kvm_run *run)
 {
 	int opc, ra;
 
-#ifdef CONFIG_SUBARCH_C3B
 	opc = (insn >> 26) & 0x3f;
 	ra = (insn >> 21) & 0x1f;
-#elif defined(CONFIG_SUBARCH_C4)
-	unsigned long ds_stat, exc_sum;
-
-	ds_stat = read_csr(CSR_DS_STAT);
-	exc_sum = read_csr(CSR_EXC_SUM);
-
-	opc = (ds_stat >> 4) & 0x3f;
-	ra = (exc_sum >> 8) & 0x1f;
-#endif
 
 	switch (opc) {
 	case 0x20: /* LDBU */
@@ -84,6 +75,12 @@ unsigned int interrupt_pending(struct kvm_vcpu *vcpu, bool *more)
 	DECLARE_BITMAP(blk, SWVM_IRQS);
 
 	bitmap_copy(blk, vcpu->arch.irqs_pending, SWVM_IRQS);
+
+	if (test_bit(INT_RTC, blk))
+		return INT_RTC;
+
+	if (test_bit(INT_IPI, blk))
+		return INT_IPI;
 
 	irq = find_last_bit(blk, SWVM_IRQS);
 
