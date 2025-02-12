@@ -57,6 +57,15 @@ extern int cma_for_each_area(int (*it)(struct cma *cma, void *data), void *data)
 
 extern void cma_reserve_pages_on_error(struct cma *cma);
 
+#ifdef CONFIG_CMA
+extern int cma_check_range(u64 *start, u64 *end);
+#else
+static inline int cma_check_range(u64 *start, u64 *end)
+{
+	return 0;
+}
+#endif
+
 #ifdef CONFIG_HYGON_CSV
 extern int __init cma_alloc_areas(unsigned int max_cma_size);
 #endif
