@@ -2017,42 +2017,47 @@ static int brcm_pcie_probe(struct platform_device *pdev)
 	if (pci_msi_enabled()) {
 		struct device_node *msi_np = of_parse_phandle(pcie->np, "msi-parent", 0);
 
-		if (msi_np == pcie->np)
+		if (!msi_np)
+			dev_dbg(pcie->dev, "No msi-parent specified\n");
+		else if (msi_np == pcie->np) {
 			ret = brcm_pcie_enable_msi(pcie);
+			of_node_put(msi_np);
+			if (ret) {
+				dev_err(pcie->dev, "probe of internal MSI failed");
+				goto fail;
+			}
+		} else {
+			/* Use RC_BAR1 for MIP access */
+			u64 msi_pci_addr;
+			u64 msi_phys_addr;
 
-		of_node_put(msi_np);
+			if (of_property_read_u64(msi_np, "brcm,msi-pci-addr", &msi_pci_addr)) {
+				of_node_put(msi_np);
+				dev_err(pcie->dev, "Unable to find MSI PCI address\n");
+				ret = -EINVAL;
+				goto fail;
+			}
 
-		if (ret) {
-			dev_err(pcie->dev, "probe of internal MSI failed");
-			goto fail;
+			if (of_property_read_u64(msi_np, "reg", &msi_phys_addr)) {
+				of_node_put(msi_np);
+				dev_err(pcie->dev, "Unable to find MSI physical address\n");
+				ret = -EINVAL;
+				goto fail;
+			}
+
+			of_node_put(msi_np);
+
+			writel(lower_32_bits(msi_pci_addr) | brcm_pcie_encode_ibar_size(0x1000),
+			       pcie->base + PCIE_MISC_RC_BAR1_CONFIG_LO);
+			writel(upper_32_bits(msi_pci_addr),
+			       pcie->base + PCIE_MISC_RC_BAR1_CONFIG_HI);
+
+			writel(lower_32_bits(msi_phys_addr) |
+			       PCIE_MISC_UBUS_BAR1_CONFIG_REMAP_ACCESS_ENABLE_MASK,
+			       pcie->base + PCIE_MISC_UBUS_BAR1_CONFIG_REMAP);
+			writel(upper_32_bits(msi_phys_addr),
+			       pcie->base + PCIE_MISC_UBUS_BAR1_CONFIG_REMAP_HI);
 		}
-	} else if (pci_msi_enabled() && msi_np != pcie->np) {
-		/* Use RC_BAR1 for MIP access */
-		u64 msi_pci_addr;
-		u64 msi_phys_addr;
-
-		if (of_property_read_u64(msi_np, "brcm,msi-pci-addr", &msi_pci_addr)) {
-			dev_err(pcie->dev, "Unable to find MSI PCI address\n");
-			ret = -EINVAL;
-			goto fail;
-		}
-
-		if (of_property_read_u64(msi_np, "reg", &msi_phys_addr)) {
-			dev_err(pcie->dev, "Unable to find MSI physical address\n");
-			ret = -EINVAL;
-			goto fail;
-		}
-
-		writel(lower_32_bits(msi_pci_addr) | brcm_pcie_encode_ibar_size(0x1000),
-		       pcie->base + PCIE_MISC_RC_BAR1_CONFIG_LO);
-		writel(upper_32_bits(msi_pci_addr),
-		       pcie->base + PCIE_MISC_RC_BAR1_CONFIG_HI);
-
-		writel(lower_32_bits(msi_phys_addr) |
-		       PCIE_MISC_UBUS_BAR1_CONFIG_REMAP_ACCESS_ENABLE_MASK,
-		       pcie->base + PCIE_MISC_UBUS_BAR1_CONFIG_REMAP);
-		writel(upper_32_bits(msi_phys_addr),
-		       pcie->base + PCIE_MISC_UBUS_BAR1_CONFIG_REMAP_HI);
 	}
 
 	bridge->ops = pcie->type == BCM7425 ? &brcm7425_pcie_ops : &brcm_pcie_ops;
